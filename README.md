@@ -1,4 +1,4 @@
-# BoardMaster
+# BoardMaster ![BoardMasterLogo](./img/king.ico)
 
 A free chess analysis tool
 
@@ -8,9 +8,13 @@ A free chess analysis tool
 
 To setup your dev environment you will need to run the following command:
 
-`pip install chess PySide2`
+`pip install chess PySide2 nuitka`
 
 Ensure you are using **Python 3.10** or higher
+
+**OR**
+
+You can run the `setup.sh` script to setup a Python venv and install the `requirements.txt` file.
 
 ### Stockfish
 
@@ -32,3 +36,7 @@ This is everything you need to run the source code.
 ## License
 
 This program is licensed under the GNU General Public License and can be seen in the [LICENSE](./LICENSE) file
+
+## Citations
+
+Logo used from https://www.iconfinder.com/search?q=chess+king&price=free

@@ -1,0 +1,7 @@
+venv/
+*.zip
+*.exe
+*.build/
+*.dist/
+*.onefile-build/
+*.xml

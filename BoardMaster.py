@@ -3,12 +3,12 @@ import chess.pgn
 import chess.engine
 import chess.svg
 import io
-from PySide2.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                               QHBoxLayout, QPushButton, QTextEdit, QLabel, QMessageBox,
                               QListWidget)
-from PySide2.QtSvg import QSvgWidget
-from PySide2.QtCore import QByteArray
-from PySide2.QtCore import Qt
+from PySide6.QtSvgWidgets import QSvgWidget
+from PySide6.QtCore import QByteArray
+from PySide6.QtCore import Qt
 import sys
 from pathlib import Path
 import os
