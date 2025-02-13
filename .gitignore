@@ -5,3 +5,9 @@ venv/
 *.dist/
 *.onefile-build/
 *.xml
+*BACKUP*
+*OLD*
+games/
+piece_images/
+stockfish.exe
+__pycache__/

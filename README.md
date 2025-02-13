@@ -18,18 +18,17 @@ You can run the `setup.sh` script to setup a Python venv and install the `requir
 
 ### Stockfish
 
+> Stockfish is compiled into the release binary using the `build_release.bat` script which uses `nuitka`
+
+For *dev* purposes you will need to download the stockfish exe from the website by following the instructions below:
+
 You will need to download [stockfish](https://stockfishchess.org/download/) to be able to use this program.
 
-Once you have downloaded stockfish, follow these steps to add it to your PATH:
+Once you have downloaded stockfish, follow these steps:
 
 1. Extract the downloaded zip file onto your PC.
 2. Go into the *stockfish* folder and change the exe name to just `stockfish`.
-3. Copy the *stockfish* folder to your *C:\Program Files* folder.
-4. Open up your Environment Variables window (type environment into your search bar on Windows and open the program titled "Edit the system environment variables")
-5. Press the "Environment Variables..." button at the bottom of the window.
-6. In both the top and bottom panes of the new window, double click the entry with variable name "Path", click the "New" button on the right side of the new window and copy *C:\Program Files\stockfish*.
-7. Press "Enter" and then "OK" on all windows until they are closed.
-8. You may need to reboot your computer or just close and open the terminal to invoke the new Path.
+3. Create a folder named *stockfish* in your repo folder and copy the *stockfish.exe* file to the *stockfish* folder in your local clone of this repo.
 
 This is everything you need to run the source code.
 
