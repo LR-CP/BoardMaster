@@ -41,6 +41,13 @@ class SettingsDialog(QDialog):
         layout.addWidget(QLabel("Number of Lines:"))
         layout.addWidget(self.arrows_spin)
 
+        self.seconds_input = QDoubleSpinBox()
+        self.seconds_input.setRange(0,5)
+        self.seconds_input.setSingleStep(0.1)
+        self.seconds_input.setValue(self.settings.value("analysis/time", 0.1, float))
+        layout.addWidget(QLabel("Time (seconds):"))
+        layout.addWidget(self.seconds_input)
+
         self.show_arrows = QCheckBox("Show Analysis Arrows")
         self.show_arrows.setChecked(
             self.settings.value("display/show_arrows", True, bool)
@@ -55,31 +62,8 @@ class SettingsDialog(QDialog):
         self.settings.setValue("engine/depth", self.depth_spin.value())
         self.settings.setValue("display/show_arrows", self.show_arrows.isChecked())
         self.settings.setValue("engine/lines", self.arrows_spin.value())
+        self.settings.setValue("analysis/time", self.seconds_input.value())
         self.accept()
-
-
-# class LoadingBarWindow(QWidget):
-#     def __init__(self):
-#         super().__init__()
-#         self.setWindowTitle("Loading...")
-#         self.setGeometry(600, 300, 400, 100)
-#         self.setWindowIcon(QIcon("./img/king.ico"))
-
-#         self.layout = QVBoxLayout()
-#         self.progress_bar = QProgressBar()
-#         self.progress_bar.setValue(1)
-#         self.progress_bar.setStyleSheet(
-#             "QProgressBar {border: 1px solid gray; border-radius: 5px; text-align: center;}"
-#         )
-#         self.layout.addWidget(self.progress_bar)
-
-#         self.setLayout(self.layout)
-
-#     def set_value(self, value: int):
-#         self.progress_bar.setValue(value)
-    
-#     def set_max(self, max: int):
-#         self.progress_bar.setMaximum(max)
 
 class GameTab(QWidget):
     def __init__(self, parent=None):
@@ -138,8 +122,6 @@ class GameTab(QWidget):
         self.summary_label = QLabel()
         left_layout.addWidget(self.summary_label)
 
-        # self.progress_bar = LoadingBarWindow()
-
         # Right panel
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
@@ -179,7 +161,7 @@ class GameTab(QWidget):
         try:
             hdrs_io = io.StringIO(pgn_string)
             hdrs = chess.pgn.read_headers(hdrs_io)
-            self.game_details.setText(f"White: {hdrs.get("White")}({hdrs.get("WhiteElo")})\nBlack: {hdrs.get("Black")}({hdrs.get("BlackElo")})\n{hdrs.get("Date")}\nResult: {hdrs.get("Termination")}")
+            self.game_details.setText(f"White: {hdrs.get("White")}({hdrs.get("WhiteElo")})\nBlack: {hdrs.get("Black")}({hdrs.get("BlackElo")})\n{hdrs.get("Date")}\nResult: {hdrs.get("Termination")}\n\n\nOpening: {hdrs.get("Opening")}")
         except Exception as e:
             print(f"Error loading game: {str(e)}")
             return False
@@ -208,116 +190,143 @@ class GameTab(QWidget):
         temp_board = chess.Board()
         self.move_evaluations = []
         self.accuracies = {'white': [], 'black': []}
-        
-        def calculate_move_accuracy(current_eval: float, best_eval: float) -> float:
-            """Calculate accuracy for a single move using a sigmoid-like function."""
-            if isinstance(current_eval, chess.engine.Mate):
-                current_eval = 10000 if current_eval.moves > 0 else -10000
-            if isinstance(best_eval, chess.engine.Mate):
-                best_eval = 10000 if best_eval.moves > 0 else -10000
-                
-            eval_diff = abs(best_eval - current_eval)
-            accuracy = 100 / (1 + exp(eval_diff / 100))
-            return accuracy
+
+        def eval_to_cp(eval_score):
+            """Convert evaluation to centipawns, handles Mate cases."""
+            if eval_score.is_mate():
+                if eval_score.mate() > 0:
+                    return 10000
+                else:
+                    return -10000
+            return eval_score.score()
+
+        def calculate_accuracy(eval_diff):
+            """Lichess-like accuracy formula based on centipawn loss."""
+            # Accuracy curve using a smoother evaluation difference scaling.
+            return max(0, 100 * (1 - (eval_diff / 500)**0.6))
 
         for i, move in enumerate(self.moves):
-            # Analyze position before move
-            info = self.engine.analyse(temp_board, chess.engine.Limit(time=0.1))
-            best_eval = info["score"].white().score(mate_score=10000) if info["score"].white().score() is not None else 0
-            
-            # Make the move
+            if temp_board.is_game_over():
+                break
+
+            # Get top moves evaluation (MultiPV)
+            analysis = self.engine.analyse(
+                temp_board,
+                chess.engine.Limit(time=self.settings.value("analysis/time", 0.1, int)),  # Longer time for accurate evaluation
+                multipv=3  # Analyze top 3 moves
+            )
+
+            # Extract the best move evaluation
+            best_eval = eval_to_cp(analysis[0]["score"].relative)
+
+            # Extract evaluation for the played move
+            played_eval = None
+            for pv in analysis:
+                if pv["pv"] and pv["pv"][0] == move:
+                    played_eval = eval_to_cp(pv["score"].relative)
+                    break
+
+            if played_eval is None:
+                # If played move is not in top 3, evaluate the board after the move
+                temp_board.push(move)
+                played_eval_info = self.engine.analyse(temp_board, chess.engine.Limit(time=self.settings.value("analysis/time", 0.1, int) + 1))
+                played_eval = eval_to_cp(played_eval_info["score"].relative)
+                temp_board.pop()
+
+            # Make the actual move
             temp_board.push(move)
-            
-            # Analyze position after move
-            info = self.engine.analyse(temp_board, chess.engine.Limit(time=0.1))
-            current_eval = info["score"].white().score(mate_score=10000) if info["score"].white().score() is not None else 0
-            
-            # Calculate score difference and accuracy
-            if temp_board.turn == chess.BLACK:  # Last move was White's
-                score_diff = current_eval - best_eval
-            else:  # Last move was Black's
-                score_diff = -(current_eval - best_eval)  # Invert for Black's perspective
-                current_eval = -current_eval  # Invert evals for Black's moves
-                best_eval = -best_eval
-            
-            # Calculate accuracy for this move
-            accuracy = calculate_move_accuracy(current_eval, best_eval)
-            
+
+            # Calculate evaluation difference (centipawn loss)
+            eval_diff = abs(best_eval - played_eval)
+
+            # Calculate accuracy (higher difference means lower accuracy)
+            accuracy = calculate_accuracy(eval_diff)
+
             # Store accuracy
             if i % 2 == 0:  # White's move
                 self.accuracies['white'].append(accuracy)
             else:  # Black's move
                 self.accuracies['black'].append(accuracy)
-            
-            # Determine move evaluation symbols
+
+            # Annotate move based on eval difference
             evaluation = ""
-            if score_diff > 200:
-                evaluation = "!!"  # Brilliant move
-            elif score_diff > 100:
-                evaluation = "!"   # Good move
-            elif score_diff < -200:
-                evaluation = "??"  # Blunder
-            elif score_diff < -100:
-                evaluation = "?"   # Mistake
-            elif abs(score_diff) < 20:
-                evaluation = "="   # Equal/quiet position
-            
+            if eval_diff < 20:
+                evaluation = "✅"  # Excellent / Best move
+            elif eval_diff < 50:
+                evaluation = "👍"  # Good move
+            elif eval_diff < 150:
+                evaluation = "⚠️"  # Inaccuracy
+            elif eval_diff < 400:
+                evaluation = "❌"  # Mistake
+            else:
+                evaluation = "🔥"  # Blunder
+
             self.move_evaluations.append(evaluation)
-            
+
             # Update progress bar
             self.progress.setValue(i + 1)
             QApplication.processEvents()
-        
-        # Calculate final accuracies
+
+        # Final accuracy scores
         self.white_accuracy = round(sum(self.accuracies['white']) / len(self.accuracies['white']), 2) if self.accuracies['white'] else 0
         self.black_accuracy = round(sum(self.accuracies['black']) / len(self.accuracies['black']), 2) if self.accuracies['black'] else 0
 
     def update_game_summary(self):
-        white_brilliant = sum(
+        white_excellent = sum(
             1
             for i, eval in enumerate(self.move_evaluations)
-            if eval == "!!" and i % 2 == 0
+            if eval == "✅" and i % 2 == 0
         )
         white_good = sum(
             1
             for i, eval in enumerate(self.move_evaluations)
-            if eval == "!" and i % 2 == 0
+            if eval == "👍" and i % 2 == 0
+        )
+        white_inacc = sum(
+            1
+            for i, eval in enumerate(self.move_evaluations)
+            if eval == "⚠️" and i % 2 == 0
         )
         white_mistake = sum(
             1
             for i, eval in enumerate(self.move_evaluations)
-            if eval == "?" and i % 2 == 0
+            if eval == "❌" and i % 2 == 0
         )
         white_blunder = sum(
             1
             for i, eval in enumerate(self.move_evaluations)
-            if eval == "??" and i % 2 == 0
+            if eval == "🔥" and i % 2 == 0
         )
 
-        black_brilliant = sum(
+        black_excellent = sum(
             1
             for i, eval in enumerate(self.move_evaluations)
-            if eval == "!!" and i % 2 == 1
+            if eval == "✅" and i % 2 == 0
         )
         black_good = sum(
             1
             for i, eval in enumerate(self.move_evaluations)
-            if eval == "!" and i % 2 == 1
+            if eval == "👍" and i % 2 == 0
+        )
+        black_inacc = sum(
+            1
+            for i, eval in enumerate(self.move_evaluations)
+            if eval == "⚠️" and i % 2 == 0
         )
         black_mistake = sum(
             1
             for i, eval in enumerate(self.move_evaluations)
-            if eval == "?" and i % 2 == 1
+            if eval == "❌" and i % 2 == 0
         )
         black_blunder = sum(
             1
             for i, eval in enumerate(self.move_evaluations)
-            if eval == "??" and i % 2 == 1
+            if eval == "🔥" and i % 2 == 0
         )
 
         summary = f"""Game Summary:
-White (Accuracy: {self.white_accuracy}): Brilliant: {white_brilliant}!!, Good: {white_good}!, Mistake: {white_mistake}?, Blunder: {white_blunder}??
-Black (Accuracy: {self.black_accuracy}): Brilliant: {black_brilliant}!!, Good: {black_good}!, Mistake: {black_mistake}?, Blunder: {black_blunder}??"""
+White (Accuracy: {self.white_accuracy}): Excellent: {white_excellent}✅, Good: {white_good}👍, Mistake: {white_inacc}⚠️, Mistake: {white_mistake}❌, Blunder: {white_blunder}🔥
+Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: {black_good}👍, Mistake: {black_inacc}⚠️, Mistake: {black_mistake}❌, Blunder: {black_blunder}🔥"""
         self.summary_label.setText(summary)
 
     def update_display(self):
@@ -329,7 +338,9 @@ Black (Accuracy: {self.black_accuracy}): Brilliant: {black_brilliant}!!, Good: {
             "display/show_arrows", True, bool
         ):
             info = self.engine.analyse(
-                self.current_board, chess.engine.Limit(time=0.1), multipv=self.settings.value("engine/lines", 3, int)
+                self.current_board,
+                chess.engine.Limit(time=0.1),
+                multipv=self.settings.value("engine/lines", 3, int),
             )
 
             for i, pv in enumerate(info):
@@ -351,6 +362,7 @@ Black (Accuracy: {self.black_accuracy}): Brilliant: {black_brilliant}!!, Good: {
             for move in self.legal_moves:
                 squares[move.to_square] = "#00ff00"
 
+        # Generate the base SVG board
         board_svg = chess.svg.board(
             self.current_board,
             arrows=arrows,
@@ -358,6 +370,47 @@ Black (Accuracy: {self.black_accuracy}): Brilliant: {black_brilliant}!!, Good: {
             size=600,
             orientation=chess.BLACK if getattr(self, 'board_orientation', False) else chess.WHITE,
         )
+
+        # Inject evaluation symbol onto the last move's square
+        if self.current_move_index > 0 and self.moves:
+            last_move = self.moves[self.current_move_index - 1]
+            last_to_square = last_move.to_square
+
+            evaluation_symbol = self.move_evaluations[self.current_move_index - 1] if self.current_move_index - 1 < len(self.move_evaluations) else ""
+
+            if evaluation_symbol:
+                # Calculate the position of the square
+                file_index = chess.square_file(last_to_square)
+                rank_index = chess.square_rank(last_to_square)
+                square_size = self.square_size
+                x = file_index * square_size
+                y = (7 - rank_index) * square_size
+
+                # Optional: Color based on evaluation symbol (you can customize this)
+                if evaluation_symbol == "✅":
+                    symbol_color = "green"
+                elif evaluation_symbol == "👍":
+                    symbol_color = "blue"
+                elif evaluation_symbol == "⚠️":
+                    symbol_color = "orange"
+                elif evaluation_symbol == "❌":
+                    symbol_color = "red"
+                elif evaluation_symbol == "🔥":
+                    symbol_color = "purple"
+                else:
+                    symbol_color = "black"
+
+                # Inject custom SVG text in the **top-left corner of the square**
+                symbol_svg = f'''
+                    <text x="{0}" y="{18}" font-size="20" font-family="Arial"
+                        font-weight="bold" fill="{symbol_color}">
+                        {evaluation_symbol}
+                    </text>
+                '''
+
+                # Insert symbol SVG into the existing SVG just before </svg>
+                board_svg = board_svg.replace("</svg>", symbol_svg + "</svg>")
+
         self.board_display.load(QByteArray(board_svg.encode("utf-8")))
 
         white_percentage = max(0, min(100, 50 + eval_score / 2))
@@ -366,25 +419,27 @@ Black (Accuracy: {self.black_accuracy}): Brilliant: {black_brilliant}!!, Good: {
             f"stop:{white_percentage/100} black, stop:1 black);"
         )
 
+        # Move list updates
         self.move_list.clear()
         temp_board = chess.Board()
         for i, move in enumerate(self.moves):
             move_san = temp_board.san(move)
-            evaluation = (
-                self.move_evaluations[i] if i < len(self.move_evaluations) else ""
-            )
+            evaluation = self.move_evaluations[i] if i < len(self.move_evaluations) else ""
             self.move_list.addItem(f"{(i // 2) + 1}. {move_san} {evaluation}")
             temp_board.push(move)
 
         self.fen_box.setText(f"FEN: {self.current_board.fen()}")
 
         self.move_list.setCurrentRow(self.current_move_index - 1)
+
         self.analyze_position()
+
+
 
     def analyze_position(self):
         if not self.current_board.is_game_over():
             info = self.engine.analyse(
-                self.current_board, chess.engine.Limit(time=0.1), multipv=self.settings.value("engine/lines", 3, int)
+                self.current_board, chess.engine.Limit(time=self.settings.value("analysis/time", 0.1, int)), multipv=self.settings.value("engine/lines", 3, int)
             )
 
             analysis_text = f"Move {(self.current_move_index + 1) // 2} "
