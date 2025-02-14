@@ -11,12 +11,13 @@ import chess.svg
 import io
 from PySide6.QtWidgets import *
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtCore import QByteArray, QSettings, Qt, Signal
+from PySide6.QtCore import QByteArray, QSettings, Qt
 from PySide6.QtGui import QAction, QIcon
 import sys
 from pathlib import Path
 import os
 from interactive_board import ChessGUI, ChessBoard
+from math import exp
 
 
 class SettingsDialog(QDialog):
@@ -57,28 +58,28 @@ class SettingsDialog(QDialog):
         self.accept()
 
 
-class LoadingBarWindow(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Loading...")
-        self.setGeometry(600, 300, 400, 100)
-        self.setWindowIcon(QIcon("./img/king.ico"))
+# class LoadingBarWindow(QWidget):
+#     def __init__(self):
+#         super().__init__()
+#         self.setWindowTitle("Loading...")
+#         self.setGeometry(600, 300, 400, 100)
+#         self.setWindowIcon(QIcon("./img/king.ico"))
 
-        self.layout = QVBoxLayout()
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setValue(1)
-        self.progress_bar.setStyleSheet(
-            "QProgressBar {border: 1px solid gray; border-radius: 5px; text-align: center;}"
-        )
-        self.layout.addWidget(self.progress_bar)
+#         self.layout = QVBoxLayout()
+#         self.progress_bar = QProgressBar()
+#         self.progress_bar.setValue(1)
+#         self.progress_bar.setStyleSheet(
+#             "QProgressBar {border: 1px solid gray; border-radius: 5px; text-align: center;}"
+#         )
+#         self.layout.addWidget(self.progress_bar)
 
-        self.setLayout(self.layout)
+#         self.setLayout(self.layout)
 
-    def set_value(self, value: int):
-        self.progress_bar.setValue(value)
+#     def set_value(self, value: int):
+#         self.progress_bar.setValue(value)
     
-    def set_max(self, max: int):
-        self.progress_bar.setMaximum(max)
+#     def set_max(self, max: int):
+#         self.progress_bar.setMaximum(max)
 
 class GameTab(QWidget):
     def __init__(self, parent=None):
@@ -94,6 +95,7 @@ class GameTab(QWidget):
         self.selected_square = None
         self.legal_moves = set()
         self.square_size = 70
+        self.flipped = False
         
         self.create_gui()
 
@@ -136,7 +138,7 @@ class GameTab(QWidget):
         self.summary_label = QLabel()
         left_layout.addWidget(self.summary_label)
 
-        self.progress_bar = LoadingBarWindow()
+        # self.progress_bar = LoadingBarWindow()
 
         # Right panel
         right_panel = QWidget()
@@ -158,9 +160,22 @@ class GameTab(QWidget):
 
         # Connect mouse events
         self.board_display.mousePressEvent = self.mousePressEvent
+    
+    def show_loading(self, title="Loading...", text="Analyzing game...", max=0):
+        self.progress = QProgressDialog(labelText=text, cancelButtonText=None, minimum=0, maximum=max, parent=self)
+        self.progress.setWindowTitle(title)
+        self.progress.setWindowModality(Qt.WindowModality.NonModal)
+        self.progress.setMinimumDuration(0)
+        self.progress.setCancelButton(None)
+        self.progress.setWindowFlags(
+            Qt.WindowType.Dialog | 
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.WindowStaysOnTopHint  # Keeps dialog on top while allowing window movement
+        )
+        self.progress.setValue(1)
+        return self.progress
 
     def load_pgn(self, pgn_string):
-        self.progress_bar.show()
         try:
             hdrs_io = io.StringIO(pgn_string)
             hdrs = chess.pgn.read_headers(hdrs_io)
@@ -176,13 +191,14 @@ class GameTab(QWidget):
 
             self.moves = list(self.current_game.mainline_moves())
             total_moves = len(self.moves)
-            self.progress_bar.set_max(total_moves)
+            self.loading_bar = self.show_loading(max=total_moves)
+            self.progress.setMaximum(total_moves)
             self.current_board = self.current_game.board()
             self.current_move_index = 0
             self.analyze_all_moves()
             self.update_display()
             self.update_game_summary()
-            self.progress_bar.hide()
+            self.loading_bar.close()
             return True
         except Exception as e:
             print(f"Error loading game: {str(e)}")
@@ -190,24 +206,71 @@ class GameTab(QWidget):
 
     def analyze_all_moves(self):
         temp_board = chess.Board()
-        self.move_evaluations = []     
-       
-        for i, move in enumerate(self.moves):
-            info = self.engine.analyse(temp_board, chess.engine.Limit(time=0.1))
-            prev_score = info["score"].white().score() if info["score"].white().score() is not None else 0
-            
-            temp_board.push(move)
-            info = self.engine.analyse(temp_board, chess.engine.Limit(time=0.1))
-            new_score = info["score"].white().score() if info["score"].white().score() is not None else 0
-            
-            score_diff = (new_score - prev_score) if temp_board.turn == chess.WHITE else -(new_score - prev_score)
-            
-            evaluation = "!!" if score_diff > 50 else "!" if score_diff > 20 else \
-                        "??" if score_diff < -100 else "?" if score_diff < -50 else ""
-            self.move_evaluations.append(evaluation)
+        self.move_evaluations = []
+        self.accuracies = {'white': [], 'black': []}
+        
+        def calculate_move_accuracy(current_eval: float, best_eval: float) -> float:
+            """Calculate accuracy for a single move using a sigmoid-like function."""
+            if isinstance(current_eval, chess.engine.Mate):
+                current_eval = 10000 if current_eval.moves > 0 else -10000
+            if isinstance(best_eval, chess.engine.Mate):
+                best_eval = 10000 if best_eval.moves > 0 else -10000
+                
+            eval_diff = abs(best_eval - current_eval)
+            accuracy = 100 / (1 + exp(eval_diff / 100))
+            return accuracy
 
-            self.progress_bar.set_value(i + 1)
+        for i, move in enumerate(self.moves):
+            # Analyze position before move
+            info = self.engine.analyse(temp_board, chess.engine.Limit(time=0.1))
+            best_eval = info["score"].white().score(mate_score=10000) if info["score"].white().score() is not None else 0
+            
+            # Make the move
+            temp_board.push(move)
+            
+            # Analyze position after move
+            info = self.engine.analyse(temp_board, chess.engine.Limit(time=0.1))
+            current_eval = info["score"].white().score(mate_score=10000) if info["score"].white().score() is not None else 0
+            
+            # Calculate score difference and accuracy
+            if temp_board.turn == chess.BLACK:  # Last move was White's
+                score_diff = current_eval - best_eval
+            else:  # Last move was Black's
+                score_diff = -(current_eval - best_eval)  # Invert for Black's perspective
+                current_eval = -current_eval  # Invert evals for Black's moves
+                best_eval = -best_eval
+            
+            # Calculate accuracy for this move
+            accuracy = calculate_move_accuracy(current_eval, best_eval)
+            
+            # Store accuracy
+            if i % 2 == 0:  # White's move
+                self.accuracies['white'].append(accuracy)
+            else:  # Black's move
+                self.accuracies['black'].append(accuracy)
+            
+            # Determine move evaluation symbols
+            evaluation = ""
+            if score_diff > 200:
+                evaluation = "!!"  # Brilliant move
+            elif score_diff > 100:
+                evaluation = "!"   # Good move
+            elif score_diff < -200:
+                evaluation = "??"  # Blunder
+            elif score_diff < -100:
+                evaluation = "?"   # Mistake
+            elif abs(score_diff) < 20:
+                evaluation = "="   # Equal/quiet position
+            
+            self.move_evaluations.append(evaluation)
+            
+            # Update progress bar
+            self.progress.setValue(i + 1)
             QApplication.processEvents()
+        
+        # Calculate final accuracies
+        self.white_accuracy = round(sum(self.accuracies['white']) / len(self.accuracies['white']), 2) if self.accuracies['white'] else 0
+        self.black_accuracy = round(sum(self.accuracies['black']) / len(self.accuracies['black']), 2) if self.accuracies['black'] else 0
 
     def update_game_summary(self):
         white_brilliant = sum(
@@ -253,8 +316,8 @@ class GameTab(QWidget):
         )
 
         summary = f"""Game Summary:
-White: Brilliant: {white_brilliant}!!, Good: {white_good}!, Mistake: {white_mistake}?, Blunder: {white_blunder}??
-Black: Brilliant: {black_brilliant}!!, Good: {black_good}!, Mistake: {black_mistake}?, Blunder: {black_blunder}??"""
+White (Accuracy: {self.white_accuracy}): Brilliant: {white_brilliant}!!, Good: {white_good}!, Mistake: {white_mistake}?, Blunder: {white_blunder}??
+Black (Accuracy: {self.black_accuracy}): Brilliant: {black_brilliant}!!, Good: {black_good}!, Mistake: {black_mistake}?, Blunder: {black_blunder}??"""
         self.summary_label.setText(summary)
 
     def update_display(self):
@@ -374,6 +437,7 @@ Black: Brilliant: {black_brilliant}!!, Good: {black_good}!, Mistake: {black_mist
             self.next_move()
 
     def board_flip(self):
+        self.flipped = not self.flipped
         self.board_orientation = not getattr(self, 'board_orientation', False)
         self.update_display()
 
@@ -388,10 +452,16 @@ Black: Brilliant: {black_brilliant}!!, Good: {black_good}!, Mistake: {black_mist
     def mousePressEvent(self, event):
         try:
             file_idx = int(event.position().x() // self.square_size)
-            rank_idx = 7 - int(event.position().y() // self.square_size)
+            rank_idx = int(event.position().y() // self.square_size)
             
             if not (0 <= file_idx <= 7 and 0 <= rank_idx <= 7):
                 return
+                
+            # Adjust coordinates based on board orientation
+            if not self.flipped:
+                rank_idx = 7 - rank_idx
+            else:
+                file_idx = 7 - file_idx
                 
             square = chess.square(file_idx, rank_idx)
 
@@ -400,7 +470,7 @@ Black: Brilliant: {black_brilliant}!!, Good: {black_good}!, Mistake: {black_mist
                 if piece and piece.color == self.current_board.turn:
                     self.selected_square = square
                     self.legal_moves = {move for move in self.current_board.legal_moves 
-                                      if move.from_square == square}
+                                    if move.from_square == square}
                     self.update_display()
             else:
                 if square == self.selected_square:
@@ -414,12 +484,12 @@ Black: Brilliant: {black_brilliant}!!, Good: {black_good}!, Mistake: {black_mist
                 piece = self.current_board.piece_at(self.selected_square)
                 if (piece and piece.symbol().lower() == 'p' and
                     ((rank_idx == 7 and self.current_board.turn == chess.WHITE) or 
-                     (rank_idx == 0 and self.current_board.turn == chess.BLACK))):
+                    (rank_idx == 0 and self.current_board.turn == chess.BLACK))):
                     move = chess.Move(self.selected_square, square, promotion=chess.QUEEN)
 
                 if move in self.legal_moves:
                     self.current_board.push(move)
-                    self.played_moves.append(move)  # Track the played move
+                    self.played_moves.append(move)
                     self.current_move_index += 1
                 
                 self.selected_square = None
