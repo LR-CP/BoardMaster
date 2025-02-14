@@ -8,23 +8,19 @@ A free chess analysis tool
 
 To setup your dev environment you will need to run the following command:
 
-`pip install chess PySide2 nuitka`
+`pip install -r requirements.txt`
 
 Ensure you are using **Python 3.10** or higher
 
 **OR**
 
-You can run the `setup.sh` script to setup a Python venv and install the `requirements.txt` file.
+You can run the `setup.sh` script to setup a Python venv and install the `requirements.txt` file automatically.
 
 ### Stockfish
 
 > Stockfish is compiled into the release binary using the `build_release.bat` script which uses `nuitka`
 
-For *dev* purposes you will need to download the stockfish exe from the website by following the instructions below:
-
-You will need to download [stockfish](https://stockfishchess.org/download/) to be able to use this program.
-
-Once you have downloaded stockfish, follow these steps:
+For *dev* purposes you will need to download the [stockfish](https://stockfishchess.org/download/) exe and follow the instructions below:
 
 1. Extract the downloaded zip file onto your PC.
 2. Go into the *stockfish* folder and change the exe name to just `stockfish`.

@@ -12,13 +12,56 @@ import io
 from PySide6.QtWidgets import *
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtCore import QByteArray, QSettings, Qt
-from PySide6.QtGui import QAction, QIcon
+from PySide6.QtGui import QAction, QIcon, QScreen
 import sys
 from pathlib import Path
 import os
 from interactive_board import ChessGUI, ChessBoard
 from math import exp
 
+class HelpDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("BoardMaster Help")
+        self.setWindowIcon(QIcon("./img/king.ico"))
+        self.resize(600, 400)
+        
+        layout = QVBoxLayout(self)
+        
+        # Help text explaining the program
+        help_text = (
+            "Welcome to BoardMaster!\n\n"
+            "BoardMaster is a chess game analyzer that leverages the Stockfish engine and the python-chess "
+            "library to provide move-by-move evaluations for chess games loaded in PGN format. "
+            "It provides a rich graphical interface built with PySide6 for navigating through games, "
+            "displaying an evaluation bar, annotated moves, and interactive board controls.\n\n"
+            "Features:\n"
+            "• Load games by pasting PGN text or opening a PGN file.\n"
+            "• Automatic analysis of each move to assess accuracy, identify mistakes, and highlight excellent moves.\n"
+            "• A dynamic evaluation bar that reflects the positional advantage based on pre-computed game analysis.\n"
+            "• Move navigation controls: first, previous, next, and last move, as well as a board flip option.\n"
+            "• Interactive board play for testing positions.\n"
+            "• Customizable engine settings, including analysis depth and number of analysis lines.\n\n"
+            "How to Use BoardMaster:\n"
+            "1. Load a game by pasting PGN text into the provided input area or by opening a PGN file.\n"
+            "2. Once loaded, the game is automatically analyzed, and move evaluations are computed.\n"
+            "3. Use the navigation buttons to move through the game and view evaluations and annotations.\n"
+            "4. The evaluation bar visually displays the advantage between White and Black.\n"
+            "5. Adjust settings via the Settings menu to customize the engine analysis parameters.\n"
+            "6. Use the interactive board tool to experiment with positions directly.\n\n"
+            "Enjoy exploring your chess games with BoardMaster!"
+        )
+        
+        # Using QTextBrowser to allow for rich text or scrolling
+        text_browser = QTextBrowser(self)
+        text_browser.setPlainText(help_text)
+        text_browser.setReadOnly(True)
+        layout.addWidget(text_browser)
+        
+        # Add an OK button to close the dialog
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok, self)
+        button_box.accepted.connect(self.accept)
+        layout.addWidget(button_box)
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
@@ -44,9 +87,16 @@ class SettingsDialog(QDialog):
         self.seconds_input = QDoubleSpinBox()
         self.seconds_input.setRange(0,5)
         self.seconds_input.setSingleStep(0.1)
-        self.seconds_input.setValue(self.settings.value("analysis/time", 0.1, float))
-        layout.addWidget(QLabel("Time (seconds):"))
+        self.seconds_input.setValue(self.settings.value("analysis/postime", 0.1, float))
+        layout.addWidget(QLabel("Time for single position analysis (seconds):"))
         layout.addWidget(self.seconds_input)
+
+        self.seconds_input2 = QDoubleSpinBox()
+        self.seconds_input2.setRange(0,5)
+        self.seconds_input2.setSingleStep(0.1)
+        self.seconds_input2.setValue(self.settings.value("analysis/fulltime", 0.1, float))
+        layout.addWidget(QLabel("Time for full game analysis (seconds):"))
+        layout.addWidget(self.seconds_input2)
 
         self.show_arrows = QCheckBox("Show Analysis Arrows")
         self.show_arrows.setChecked(
@@ -62,7 +112,8 @@ class SettingsDialog(QDialog):
         self.settings.setValue("engine/depth", self.depth_spin.value())
         self.settings.setValue("display/show_arrows", self.show_arrows.isChecked())
         self.settings.setValue("engine/lines", self.arrows_spin.value())
-        self.settings.setValue("analysis/time", self.seconds_input.value())
+        self.settings.setValue("analysis/postime", self.seconds_input.value())
+        self.settings.setValue("analysis/fulltime", self.seconds_input2.value())
         self.accept()
 
 class GameTab(QWidget):
@@ -190,6 +241,7 @@ class GameTab(QWidget):
         temp_board = chess.Board()
         self.move_evaluations = []
         self.accuracies = {'white': [], 'black': []}
+        self.move_evaluations_scores = []
 
         def eval_to_cp(eval_score):
             """Convert evaluation to centipawns, handles Mate cases."""
@@ -212,12 +264,14 @@ class GameTab(QWidget):
             # Get top moves evaluation (MultiPV)
             analysis = self.engine.analyse(
                 temp_board,
-                chess.engine.Limit(time=self.settings.value("analysis/time", 0.1, int)),  # Longer time for accurate evaluation
+                chess.engine.Limit(time=self.settings.value("analysis/fulltime", 0.1, int)),  # Longer time for accurate evaluation
                 multipv=3  # Analyze top 3 moves
             )
 
             # Extract the best move evaluation
             best_eval = eval_to_cp(analysis[0]["score"].relative)
+
+            self.move_evaluations_scores.append(best_eval)
 
             # Extract evaluation for the played move
             played_eval = None
@@ -229,7 +283,7 @@ class GameTab(QWidget):
             if played_eval is None:
                 # If played move is not in top 3, evaluate the board after the move
                 temp_board.push(move)
-                played_eval_info = self.engine.analyse(temp_board, chess.engine.Limit(time=self.settings.value("analysis/time", 0.1, int) + 1))
+                played_eval_info = self.engine.analyse(temp_board, chess.engine.Limit(time=self.settings.value("analysis/fulltime", 0.1, int)))
                 played_eval = eval_to_cp(played_eval_info["score"].relative)
                 temp_board.pop()
 
@@ -325,8 +379,8 @@ class GameTab(QWidget):
         )
 
         summary = f"""Game Summary:
-White (Accuracy: {self.white_accuracy}): Excellent: {white_excellent}✅, Good: {white_good}👍, Mistake: {white_inacc}⚠️, Mistake: {white_mistake}❌, Blunder: {white_blunder}🔥
-Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: {black_good}👍, Mistake: {black_inacc}⚠️, Mistake: {black_mistake}❌, Blunder: {black_blunder}🔥"""
+White (Accuracy: {self.white_accuracy}): Excellent: {white_excellent}✅, Good: {white_good}👍, Inaccuracy: {white_inacc}⚠️, Mistake: {white_mistake}❌, Blunder: {white_blunder}🔥
+Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: {black_good}👍, Inaccuracy: {black_inacc}⚠️, Mistake: {black_mistake}❌, Blunder: {black_blunder}🔥"""
         self.summary_label.setText(summary)
 
     def update_display(self):
@@ -339,7 +393,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         ):
             info = self.engine.analyse(
                 self.current_board,
-                chess.engine.Limit(time=0.1),
+                chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)),
                 multipv=self.settings.value("engine/lines", 3, int),
             )
 
@@ -353,6 +407,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 annotations[move.to_square] = f"{score / 100.0:.2f}"
 
         if self.current_move_index > 0 and self.moves:
+            eval_score = self.move_evaluations_scores[self.current_move_index - 1]
             last_move = self.moves[self.current_move_index - 1]
             arrows.append(chess.svg.Arrow(tail=last_move.from_square, head=last_move.to_square, color="#674ea7"))
 
@@ -432,14 +487,12 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
 
         self.move_list.setCurrentRow(self.current_move_index - 1)
 
-        self.analyze_position()
-
-
+        # self.analyze_position() # Remove this for pre analysis (keep for move based analysis)
 
     def analyze_position(self):
         if not self.current_board.is_game_over():
             info = self.engine.analyse(
-                self.current_board, chess.engine.Limit(time=self.settings.value("analysis/time", 0.1, int)), multipv=self.settings.value("engine/lines", 3, int)
+                self.current_board, chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)), multipv=self.settings.value("engine/lines", 3, int)
             )
 
             analysis_text = f"Move {(self.current_move_index + 1) // 2} "
@@ -608,6 +661,11 @@ class BoardMaster(QMainWindow):
         open_settings.triggered.connect(self.open_settings)
         settings_menu.addAction(open_settings)
 
+        help_menu = menubar.addMenu("&Help")
+        open_help = QAction("How To Use", self)
+        open_help.triggered.connect(self.open_help)
+        help_menu.addAction(open_help)
+
     def initialize_engine(self):
         # List of possible Stockfish executable names
         stockfish_names = ["stockfish.exe", "stockfish"]
@@ -687,6 +745,10 @@ class BoardMaster(QMainWindow):
     def open_settings(self):
         dialog = SettingsDialog(self)
         dialog.exec()
+    
+    def open_help(self):
+        help_dialog = HelpDialog(self)
+        help_dialog.exec()
 
     def open_pgn_file(self):
         file_name, _ = QFileDialog.getOpenFileName(
@@ -721,6 +783,10 @@ class BoardMaster(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = BoardMaster()
+    srcSize = QScreen.availableGeometry(QApplication.primaryScreen())
+    frmX = (srcSize.width() - window.width())/2
+    frmY = (srcSize.height() - window.height())/2
+    window.move(frmX, frmY)
     if window.engine:
         window.show()
         sys.exit(app.exec())
