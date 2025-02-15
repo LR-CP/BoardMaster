@@ -16,14 +16,18 @@ class GameTab(QWidget):
         self.settings = QSettings("BoardMaster", "BoardMaster")
         self.current_game = None
         self.current_board = chess.Board()
-        self.moves = []
-        self.played_moves = []  # Track actual moves played
+        self.moves = []  # Main line moves
+        self.variations = {}  # Dictionary to store variations: {move_index: [variation_moves]}
+        self.current_variation = None  # Tuple of (start_index, variation_index)
+        self.played_moves = []
         self.current_move_index = 0
         self.move_evaluations = []
+        self.variation_evaluations = {}  # Dictionary to store evaluations for variations
         self.selected_square = None
         self.legal_moves = set()
         self.square_size = 70
         self.flipped = False
+        self.is_live_game = True
 
         self.create_gui()
 
@@ -116,6 +120,10 @@ class GameTab(QWidget):
         return self.progress
 
     def load_pgn(self, pgn_string):
+        self.is_live_game = False
+        self.current_variation = None
+        self.variations = {}
+        self.variation_evaluations = {}
         try:
             hdrs_io = io.StringIO(pgn_string)
             hdrs = chess.pgn.read_headers(hdrs_io)
@@ -356,9 +364,19 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             
             self.analysis_text.setText(analysis_text)
 
-        # Use stored evaluation if we're viewing a previous position
+        # Get evaluation score for current position
         if self.current_move_index > 0 and hasattr(self, 'move_evaluations_scores'):
-            eval_score = self.move_evaluations_scores[self.current_move_index - 1]
+            # Only use stored evaluation if we have it for this position
+            if self.current_move_index - 1 < len(self.move_evaluations_scores):
+                eval_score = self.move_evaluations_scores[self.current_move_index - 1]
+            else:
+                # Otherwise use the current position evaluation
+                info = self.engine.analyse(
+                    self.current_board,
+                    chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)),
+                    multipv=1
+                )
+                eval_score = self.eval_to_cp(info[0]["score"].relative)
 
         squares = {}
         if self.selected_square is not None:
@@ -367,7 +385,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 squares[move.to_square] = "#00ff00"
 
         # Show last move with arrow
-        if self.current_move_index > 0 and self.moves:
+        if self.current_move_index > 0 and self.moves: #self.current_variation is None:
             last_move = self.moves[self.current_move_index - 1]
             arrows.append(
                 chess.svg.Arrow(
@@ -395,11 +413,10 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             last_move = self.moves[self.current_move_index - 1]
             last_to_square = last_move.to_square
 
-            evaluation_symbol = (
-                self.move_evaluations[self.current_move_index - 1]
-                if self.current_move_index - 1 < len(self.move_evaluations)
-                else ""
-            )
+            # Only show evaluation if we have it for this move
+            evaluation_symbol = ""
+            if self.current_move_index - 1 < len(self.move_evaluations):
+                evaluation_symbol = self.move_evaluations[self.current_move_index - 1]
 
             if evaluation_symbol:
                 # Calculate the position of the square
@@ -434,14 +451,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 # Insert symbol SVG into the existing SVG
                 board_svg = board_svg.replace("</svg>", symbol_svg + "</svg>")
 
-                if self.current_board.is_check() or self.current_board.is_checkmate():
-                    print("check")
-                    highlight_svg = """
-                    <circle cx="x" cy="y" r="30" style="fill:none;stroke:red;stroke-width:5"/>
-                    """
-                    highlight_svg = highlight_svg.replace("x", "100").replace("y", "100")
-                    board_svg = board_svg.replace("</svg>", symbol_svg + "</svg>")
-
         # Load the SVG into the display
         self.board_display.load(QByteArray(board_svg.encode("utf-8")))
 
@@ -453,6 +462,9 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             f"background: qlineargradient(y1:0, y2:1, stop:0 white, stop:{white_percentage/100} white, "
             f"stop:{white_percentage/100} black, stop:1 black);"
         )
+
+        # Update FEN
+        self.fen_box.setText(f"FEN: {self.current_board.fen()}")
 
         # Update move list
         self.move_list.clear()
@@ -478,11 +490,29 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             move_widget = MoveRow(
                 move_number, 
                 white_move, white_eval, i,
-                self,  # Pass the GameTab instance
+                self,
                 black_move, black_eval, i + 1 if black_move else None
             )
             
-            # Create list item and set custom widget
+            # Add variations if they exist at this move
+            if i in self.variations:
+                for var_index, variation in enumerate(self.variations[i]):
+                    var_temp_board = temp_board.copy()
+                    var_move_number = move_number
+                    
+                    # Create a variation row with indentation
+                    variation_text = "    Variation {}: ".format(var_index + 1)
+                    for j, var_move in enumerate(variation):
+                        move_san = var_temp_board.san(var_move)
+                        eval_symbol = self.variation_evaluations[i][var_index][j] if i in self.variation_evaluations else ""
+                        variation_text += f"{move_san}{eval_symbol} "
+                        var_temp_board.push(var_move)
+                    
+                    var_item = QListWidgetItem(variation_text)
+                    var_item.setForeground(Qt.GlobalColor.blue)  # Make variations blue
+                    self.move_list.addItem(var_item)
+            
+            # Create list item and set custom widget for main line
             item = QListWidgetItem(self.move_list)
             item.setSizeHint(move_widget.sizeHint())
             self.move_list.addItem(item)
@@ -495,17 +525,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         if self.current_move_index > 0:
             row = (self.current_move_index - 1) // 2
             self.move_list.setCurrentRow(row)
-
-        self.fen_box.setText(f"FEN: {self.current_board.fen()}")
-
-        # Calculate win bar percentage using logistic function
-        win_percentage = 50 + (50 * (2 / (1 + math.exp(-eval_score/400)) - 1))
-        white_percentage = max(0, min(100, win_percentage))
-        
-        self.win_bar.setStyleSheet(
-            f"background: qlineargradient(y1:0, y2:1, stop:0 white, stop:{white_percentage/100} white, "
-            f"stop:{white_percentage/100} black, stop:1 black);"
-        )
 
         # self.analyze_position() # Remove this for pre analysis (keep for move based analysis)
 
@@ -645,13 +664,82 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                     )
 
                 if move in self.legal_moves:
+                    # Check if we're starting a new variation
+                    if not self.is_live_game and self.current_move_index < len(self.moves):
+                        if self.current_variation is None:
+                            # Start a new variation
+                            variation_index = len(self.variations.get(self.current_move_index, []))
+                            if self.current_move_index not in self.variations:
+                                self.variations[self.current_move_index] = []
+                            self.variations[self.current_move_index].append([])
+                            self.current_variation = (self.current_move_index, variation_index)
+                            
+                            # Initialize evaluations for this variation
+                            if self.current_move_index not in self.variation_evaluations:
+                                self.variation_evaluations[self.current_move_index] = []
+                            self.variation_evaluations[self.current_move_index].append([])
+
+                    # Make the move
                     self.current_board.push(move)
-                    self.played_moves.append(move)
+                    
+                    # Store the move in appropriate list
+                    if self.current_variation is not None:
+                        start_index, var_index = self.current_variation
+                        self.variations[start_index][var_index].append(move)
+                        
+                        # Analyze and store evaluation for variation
+                        if hasattr(self, 'engine'):
+                            info = self.engine.analyse(
+                                self.current_board,
+                                chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)),
+                                multipv=1
+                            )
+                            score = self.eval_to_cp(info[0]["score"].relative)
+                            
+                            # Add evaluation
+                            eval_diff = abs(score)
+                            if eval_diff < 50:
+                                evaluation = "✅"
+                            elif eval_diff < 100:
+                                evaluation = "👍"
+                            elif eval_diff < 200:
+                                evaluation = "⚠️"
+                            elif eval_diff < 400:
+                                evaluation = "❌"
+                            else:
+                                evaluation = "🔥"
+                            self.variation_evaluations[start_index][var_index].append(evaluation)
+                    else:
+                        self.moves.append(move)
+                        if hasattr(self, 'engine'):
+                            # Original move evaluation code...
+                            info = self.engine.analyse(
+                                self.current_board,
+                                chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)),
+                                multipv=1
+                            )
+                            score = self.eval_to_cp(info[0]["score"].relative)
+                            self.move_evaluations_scores.append(score)
+                            
+                            eval_diff = abs(score)
+                            if eval_diff < 50:
+                                evaluation = "✅"
+                            elif eval_diff < 100:
+                                evaluation = "👍"
+                            elif eval_diff < 200:
+                                evaluation = "⚠️"
+                            elif eval_diff < 400:
+                                evaluation = "❌"
+                            else:
+                                evaluation = "🔥"
+                            self.move_evaluations.append(evaluation)
+                    
                     self.current_move_index += 1
+                    self.update_display()
 
                 self.selected_square = None
                 self.legal_moves = set()
-                self.update_display()
+                
         except Exception as e:
             print(f"Error handling mouse press: {e}")
             self.selected_square = None
