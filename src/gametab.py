@@ -5,9 +5,43 @@ import chess.svg
 import io
 from PySide6.QtWidgets import *
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtCore import QByteArray, QSettings, Qt
+from PySide6.QtCore import QByteArray, QSettings, Qt, QPointF
+from PySide6.QtGui import QPainter, QColor, QPixmap
 import math
 from utils import MoveRow
+
+# Updated CustomSVGWidget for centered square overlays and drag overlay
+class CustomSVGWidget(QSvgWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.squares = {}  # {square: QColor, ...}
+        self.square_size = 70
+        self.drag_info = {}  # New: info dict passed from GameTab
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        # Compute a global offset if the widget size exceeds the board size.
+        board_size = 8 * self.square_size
+        global_offset = (self.width() - board_size) / 2
+        # Center a rectangle that is 75% of square_size within each square.
+        inner_offset = (self.square_size - (self.square_size * 1)) / 2
+        size = self.square_size * 1
+        for square, color in self.squares.items():
+            file = chess.square_file(square)
+            rank = 7 - chess.square_rank(square)
+            x = global_offset + file * self.square_size + inner_offset
+            y = global_offset + rank * self.square_size + inner_offset
+            painter.fillRect(x, y, size, size, color)
+        # If drag_info is set, draw the dragged piece pixmap.
+        if self.drag_info.get("dragging"):
+            pixmap = self.drag_info.get("pixmap")
+            pos = self.drag_info.get("drag_current_pos")
+            offset = self.drag_info.get("drag_offset")
+            if pixmap and pos and offset:
+                target = pos - offset  # so image remains centered under mouse
+                painter.drawPixmap(target, pixmap)
+        painter.end()
 
 class GameTab(QWidget):
     def __init__(self, parent=None):
@@ -28,6 +62,10 @@ class GameTab(QWidget):
         self.square_size = 70
         self.flipped = False
         self.is_live_game = True
+        self.dragging = False
+        self.drag_start_square = None
+        self.drag_current_pos = None
+        self.drag_offset = None
 
         self.create_gui()
 
@@ -44,7 +82,8 @@ class GameTab(QWidget):
         board_layout = QHBoxLayout()
         self.win_bar = QLabel()
         self.win_bar.setFixedSize(20, 600)
-        self.board_display = QSvgWidget()
+        # Use our custom SVG widget
+        self.board_display = CustomSVGWidget()
         self.board_display.setFixedSize(600, 600)
         board_layout.addWidget(self.win_bar)
         board_layout.addWidget(self.board_display)
@@ -331,46 +370,37 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         arrows = []
         annotations = {}
         eval_score = 0  # Default value
-        
+        squares = {}  # This dict will be used for colored square overlays
+
         if not self.current_board.is_game_over() and self.settings.value("display/show_arrows", True, bool):
             info = self.engine.analyse(
                 self.current_board,
                 chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)),
                 multipv=self.settings.value("engine/lines", 3, int)
             )
-            
-            # Get the main line evaluation
             main_eval = info[0]["score"].relative
             eval_score = self.eval_to_cp(main_eval) if hasattr(self, 'eval_to_cp') else 0
-            
-            # Update analysis text
             analysis_text = f"Move {(self.current_move_index + 1) // 2} "
             analysis_text += f"({'White' if self.current_move_index % 2 == 0 else 'Black'})\n\n"
             analysis_text += "Top moves:\n"
-            
             for i, pv in enumerate(info, 1):
                 move = pv["pv"][0]
                 score = self.eval_to_cp(pv["score"].relative) if hasattr(self, 'eval_to_cp') else 0
                 analysis_text += f"{i}. {self.current_board.san(move)} (eval: {score/100:+.2f})\n"
-                
-                # Add arrows
-                color = "#00ff00" if i == 0 else "#007000" if i == 1 else "#003000"
+                # Retain annotation arrows for best moves
+                color = QColor("#00ff00") if i <= 1 else QColor("#007000")
                 arrows.append(chess.svg.Arrow(
                     tail=move.from_square,
                     head=move.to_square,
-                    color=color
+                    color=color.name()
                 ))
-                annotations[move.to_square] = f"{score / 100.0:.2f}"
-            
+                annotations[move.to_square] = f"{score/100.0:.2f}"
             self.analysis_text.setText(analysis_text)
 
-        # Get evaluation score for current position
         if self.current_move_index > 0 and hasattr(self, 'move_evaluations_scores'):
-            # Only use stored evaluation if we have it for this position
             if self.current_move_index - 1 < len(self.move_evaluations_scores):
                 eval_score = self.move_evaluations_scores[self.current_move_index - 1]
             else:
-                # Otherwise use the current position evaluation
                 info = self.engine.analyse(
                     self.current_board,
                     chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)),
@@ -378,92 +408,53 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 )
                 eval_score = self.eval_to_cp(info[0]["score"].relative)
 
-        squares = {}
         if self.selected_square is not None:
-            squares[self.selected_square] = "#ffff00"
+            squares[self.selected_square] = QColor(100, 100, 0, 100)
             for move in self.legal_moves:
-                squares[move.to_square] = "#00ff00"
+                squares[move.to_square] = QColor(0, 100, 0, 100)
 
-        # Show last move with arrow
-        if self.current_move_index > 0 and self.moves: #self.current_variation is None:
+        # Overlay a transparent purple square on the destination of the most recent move.
+        if self.current_move_index > 0 and self.moves:
             last_move = self.moves[self.current_move_index - 1]
-            arrows.append(
-                chess.svg.Arrow(
-                    tail=last_move.from_square,
-                    head=last_move.to_square,
-                    color="#674ea7",
-                )
-            )
+            squares[last_move.to_square] = QColor(128, 0, 128, 100)
+            squares[last_move.from_square] = QColor(128, 0, 128, 100)
 
-        # Generate the base SVG board
+        # Make the king glow red when in check or mate.
+        if self.current_board.is_check():
+            king_square = self.current_board.king(self.current_board.turn)
+            if king_square is not None:
+                squares[king_square] = QColor(255, 0, 0, 150)
+
+        # Generate the base SVG board (without overlays)
         board_svg = chess.svg.board(
             self.current_board,
             arrows=arrows,
-            squares=squares,
             size=600,
-            orientation=(
-                chess.BLACK
-                if getattr(self, "board_orientation", False)
-                else chess.WHITE
-            ),
+            orientation=chess.BLACK if self.flipped else chess.WHITE
         )
-
-        # Inject evaluation symbol onto the last move's square
-        if self.current_move_index > 0 and self.moves:
-            last_move = self.moves[self.current_move_index - 1]
-            last_to_square = last_move.to_square
-
-            # Only show evaluation if we have it for this move
-            evaluation_symbol = ""
-            if self.current_move_index - 1 < len(self.move_evaluations):
-                evaluation_symbol = self.move_evaluations[self.current_move_index - 1]
-
-            if evaluation_symbol:
-                # Calculate the position of the square
-                file_index = chess.square_file(last_to_square)
-                rank_index = chess.square_rank(last_to_square)
-                square_size = self.square_size
-                x = file_index * square_size
-                y = (7 - rank_index) * square_size
-
-                # Color based on evaluation symbol
-                if evaluation_symbol == "✅":
-                    symbol_color = "green"
-                elif evaluation_symbol == "👍":
-                    symbol_color = "yellow"
-                elif evaluation_symbol == "⚠️":
-                    symbol_color = "orange"
-                elif evaluation_symbol == "❌":
-                    symbol_color = "red"
-                elif evaluation_symbol == "🔥":
-                    symbol_color = "darkred"
-                else:
-                    symbol_color = "black"
-
-                # Inject custom SVG text
-                symbol_svg = f"""
-                    <text x="{0}" y="{18}" font-size="20" font-family="Arial"
-                        font-weight="bold" fill="{symbol_color}">
-                        {evaluation_symbol}
-                    </text>
-                """
-
-                # Insert symbol SVG into the existing SVG
-                board_svg = board_svg.replace("</svg>", symbol_svg + "</svg>")
-
-        # Load the SVG into the display
         self.board_display.load(QByteArray(board_svg.encode("utf-8")))
+        # Pass the computed squares into our custom widget so its paintEvent draws centered overlays.
+        self.board_display.squares = squares
+        # NEW: Pass drag info if dragging is active
+        if self.dragging and self.drag_current_pos and self.drag_offset:
+            piece = self.current_board.piece_at(self.drag_start_square)
+            if piece:
+                self.board_display.drag_info = {
+                    "dragging": True,
+                    "drag_current_pos": self.drag_current_pos,
+                    "drag_offset": self.drag_offset,
+                    "pixmap": self.get_piece_pixmap(piece)
+                }
+            else:
+                self.board_display.drag_info = {"dragging": False}
+        else:
+            self.board_display.drag_info = {"dragging": False}
+        self.board_display.repaint()
 
-        # Calculate win bar percentage using logistic function
-        win_percentage = 50 + (50 * (2 / (1 + math.exp(-eval_score/400)) - 1))
-        white_percentage = max(0, min(100, win_percentage))
-        
         self.win_bar.setStyleSheet(
-            f"background: qlineargradient(y1:0, y2:1, stop:0 white, stop:{white_percentage/100} white, "
-            f"stop:{white_percentage/100} black, stop:1 black);"
+            f"background: qlineargradient(y1:0, y2:1, stop:0 white, stop:{max(0, min(100, 50 + (50 * (2 / (1+math.exp(-eval_score/400)) - 1)) ))/100} white, "
+            f"stop:{max(0, min(100, 50 + (50 * (2 / (1+math.exp(-eval_score/400)) - 1)) ))/100} black, stop:1 black);"
         )
-
-        # Update FEN
         self.fen_box.setText(f"FEN: {self.current_board.fen()}")
 
         # Update move list
@@ -616,132 +607,89 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             super().keyPressEvent(event)
 
     def mousePressEvent(self, event):
-        try:
-            file_idx = int(event.position().x() // self.square_size)
-            rank_idx = int(event.position().y() // self.square_size)
+        pos = event.localPos()  # use localPos for consistency
+        file_idx = int(pos.x() // self.square_size)
+        rank_idx = 7 - int(pos.y() // self.square_size)
+        square = chess.square(file_idx, rank_idx)
+        piece = self.current_board.piece_at(square)
+        if event.button() == Qt.LeftButton and piece:
+            self.dragging = True
+            self.drag_start_square = square
+            # Compute board_display global offset
+            global_offset = (self.board_display.width() - (self.square_size * 8)) / 2
+            target_top_left = QPointF(global_offset + file_idx * self.square_size,
+                                      global_offset + (7 - rank_idx) * self.square_size)
+            # Store drag_offset only once
+            self.drag_offset = pos - target_top_left
+            self.drag_current_pos = pos
+            # Update the drag overlay immediately
+            self.board_display.drag_info = {
+                "drag_current_pos": self.drag_current_pos,
+                "drag_offset": self.drag_offset,
+                "pixmap": self.get_piece_pixmap(piece)
+            }
+        else:
+            super().mousePressEvent(event)
+        self.board_display.repaint()
 
-            if not (0 <= file_idx <= 7 and 0 <= rank_idx <= 7):
-                return
-
-            # Adjust coordinates based on board orientation
-            if not self.flipped:
-                rank_idx = 7 - rank_idx
+    def mouseMoveEvent(self, event):
+        if self.dragging:
+            self.drag_current_pos = event.localPos()
+            if self.is_live_game is False:
+                y_off = 129
             else:
-                file_idx = 7 - file_idx
+                y_off = 89
+            self.drag_current_pos = QPointF(self.drag_current_pos.x() - 44, self.drag_current_pos.y() - y_off)
+            # Do not update drag_offset; use the stored value from mousePressEvent
+            piece = self.current_board.piece_at(self.drag_start_square)
+            if piece:
+                self.board_display.drag_info = {
+                    "dragging": True,
+                    "drag_current_pos": self.drag_current_pos,
+                    "drag_offset": self.drag_offset,
+                    "pixmap": self.get_piece_pixmap(piece)
+                }
+            self.board_display.repaint()
+        else:
+            super().mouseMoveEvent(event)
 
-            square = chess.square(file_idx, rank_idx)
-
-            if self.selected_square is None:
-                piece = self.current_board.piece_at(square)
-                if piece and piece.color == self.current_board.turn:
-                    self.selected_square = square
-                    self.legal_moves = {
-                        move
-                        for move in self.current_board.legal_moves
-                        if move.from_square == square
-                    }
-                    self.update_display()
+    def mouseReleaseEvent(self, event):
+        if self.dragging:
+            # Subtract the same offset applied in mouseMoveEvent
+            if self.is_live_game is False:
+                pos = event.localPos() - QPointF(44, 129)
             else:
-                if square == self.selected_square:
-                    self.selected_square = None
-                    self.legal_moves = set()
-                    self.update_display()
-                    return
+                pos = event.localPos() - QPointF(44, 89)
+            file_idx = int(pos.x() // self.square_size)
+            rank_idx = 7 - int(pos.y() // self.square_size)
+            drop_square = chess.square(file_idx, rank_idx)
+            move = chess.Move(self.drag_start_square, drop_square)
+            if move in self.current_board.legal_moves:
+                self.current_board.push(move)
+                # Only add the move to the move list for live games
+                if self.is_live_game:
+                    self.moves.append(move)
+            self.dragging = False
+            self.drag_start_square = None
+            self.drag_current_pos = None
+            self.drag_offset = None
+            self.board_display.drag_info = {"dragging": False}
+            self.update_display()  # full update after move
+        else:
+            super().mouseReleaseEvent(event)
 
-                move = chess.Move(self.selected_square, square)
-
-                piece = self.current_board.piece_at(self.selected_square)
-                if (
-                    piece
-                    and piece.symbol().lower() == "p"
-                    and (
-                        (rank_idx == 7 and self.current_board.turn == chess.WHITE)
-                        or (rank_idx == 0 and self.current_board.turn == chess.BLACK)
-                    )
-                ):
-                    move = chess.Move(
-                        self.selected_square, square, promotion=chess.QUEEN
-                    )
-
-                if move in self.legal_moves:
-                    # Check if we're starting a new variation
-                    if not self.is_live_game and self.current_move_index < len(self.moves):
-                        if self.current_variation is None:
-                            # Start a new variation
-                            variation_index = len(self.variations.get(self.current_move_index, []))
-                            if self.current_move_index not in self.variations:
-                                self.variations[self.current_move_index] = []
-                            self.variations[self.current_move_index].append([])
-                            self.current_variation = (self.current_move_index, variation_index)
-                            
-                            # Initialize evaluations for this variation
-                            if self.current_move_index not in self.variation_evaluations:
-                                self.variation_evaluations[self.current_move_index] = []
-                            self.variation_evaluations[self.current_move_index].append([])
-
-                    # Make the move
-                    self.current_board.push(move)
-                    
-                    # Store the move in appropriate list
-                    if self.current_variation is not None:
-                        start_index, var_index = self.current_variation
-                        self.variations[start_index][var_index].append(move)
-                        
-                        # Analyze and store evaluation for variation
-                        if hasattr(self, 'engine'):
-                            info = self.engine.analyse(
-                                self.current_board,
-                                chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)),
-                                multipv=1
-                            )
-                            score = self.eval_to_cp(info[0]["score"].relative)
-                            
-                            # Add evaluation
-                            eval_diff = abs(score)
-                            if eval_diff < 50:
-                                evaluation = "✅"
-                            elif eval_diff < 100:
-                                evaluation = "👍"
-                            elif eval_diff < 200:
-                                evaluation = "⚠️"
-                            elif eval_diff < 400:
-                                evaluation = "❌"
-                            else:
-                                evaluation = "🔥"
-                            self.variation_evaluations[start_index][var_index].append(evaluation)
-                    else:
-                        self.moves.append(move)
-                        if hasattr(self, 'engine'):
-                            # Original move evaluation code...
-                            info = self.engine.analyse(
-                                self.current_board,
-                                chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)),
-                                multipv=1
-                            )
-                            score = self.eval_to_cp(info[0]["score"].relative)
-                            self.move_evaluations_scores.append(score)
-                            
-                            eval_diff = abs(score)
-                            if eval_diff < 50:
-                                evaluation = "✅"
-                            elif eval_diff < 100:
-                                evaluation = "👍"
-                            elif eval_diff < 200:
-                                evaluation = "⚠️"
-                            elif eval_diff < 400:
-                                evaluation = "❌"
-                            else:
-                                evaluation = "🔥"
-                            self.move_evaluations.append(evaluation)
-                    
-                    self.current_move_index += 1
-                    self.update_display()
-
-                self.selected_square = None
-                self.legal_moves = set()
-                
-        except Exception as e:
-            print(f"Error handling mouse press: {e}")
-            self.selected_square = None
-            self.legal_moves = set()
-            self.update_display()
+    # NEW: Updated helper to load piece image with fallback if not found
+    def get_piece_pixmap(self, piece):
+        prefix = "w" if piece.color == chess.WHITE else "b"
+        letter = piece.symbol().upper()
+        path = f"c:/Users/LPC/Documents/Programs/BoardMaster/piece_images/{prefix.lower()}{letter.lower()}.png"
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            print(f"Error: Failed to load image from {path}")
+            pixmap = QPixmap(self.square_size, self.square_size)
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            painter.setPen(Qt.black)
+            painter.drawText(pixmap.rect(), Qt.AlignCenter, piece.symbol())
+            painter.end()
+        return pixmap.scaled(self.square_size, self.square_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)

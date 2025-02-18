@@ -4,8 +4,8 @@ import chess.engine
 import chess.svg
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMenu, QLineEdit
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtCore import Qt, QByteArray
-from PySide6.QtGui import QPainter, QIcon, QColor, QAction, QPen
+from PySide6.QtCore import Qt, QByteArray, QPointF
+from PySide6.QtGui import QPainter, QIcon, QColor, QAction, QPen, QPixmap
 
 class ChessBoard(QSvgWidget):
     def __init__(self, engine : chess.engine = None, threads=None, multipv=None, mem=None, time=None, depth=None, parent=None):
@@ -20,16 +20,31 @@ class ChessBoard(QSvgWidget):
         self.square_size = 70
         self.board_size = self.square_size * 8
         self.setFixedSize(self.board_size, self.board_size)
+        self.board_orientation = chess.WHITE
         self.move_stack = []
         self.engine = engine
         self.best_moves = []
         self.selected_square = None
         self.legal_moves = []
+        # Drag/drop state
+        self.dragging = False
+        self.drag_start_square = None
+        self.drag_current_pos = None
+        self.drag_offset = None
         self.update_board()
 
     def update_board(self):
-        self.load(self.board._repr_svg_().encode('utf-8'))
+        board_svg = chess.svg.board(
+            self.board,
+            size=self.board_size,
+            orientation=self.board_orientation
+        )
+        self.load(QByteArray(board_svg.encode("utf-8")))
         self.update()
+
+    def flip_board(self):
+        self.board_orientation = chess.BLACK if self.board_orientation == chess.WHITE else chess.WHITE
+        self.update_board()
 
     def set_piece(self, square, piece_symbol):
         self.move_stack.append(self.board.fen())
@@ -88,45 +103,69 @@ class ChessBoard(QSvgWidget):
         board_svg = chess.svg.board(
             self.board,
             arrows=arrows,
-            orientation=(
-                chess.BLACK
-                if getattr(self, "board_orientation", False)
-                else chess.WHITE
-            ),
+            orientation=self.board_orientation,
         )
 
         self.load(QByteArray(board_svg._repr_svg_().encode("utf-8")))
 
         # self.update_board()
 
-    def mousePressEvent(self, event):
-        file_idx = int(event.position().x() // self.square_size)
-        rank_idx = 7 - int(event.position().y() // self.square_size)
-        square = chess.square(file_idx, rank_idx)
+    # NEW: Helper method to map a display position to board square indexes.
+    def map_position_to_square(self, pos):
+        # pos is a QPointF in widget coordinates.
+        if self.board_orientation == chess.WHITE:
+            file_idx = int(pos.x() // self.square_size)
+            rank_idx = 7 - int(pos.y() // self.square_size)
+        else:  # For flipped board (BLACK orientation)
+            file_idx = 7 - int(pos.x() // self.square_size)
+            rank_idx = int(pos.y() // self.square_size)
+        return file_idx, rank_idx
 
-        if self.edit_mode:
-            if event.button() == Qt.LeftButton:
-                self.show_piece_menu(event.globalPos(), square)
-            elif event.button() == Qt.RightButton:
-                self.set_piece(square, '')
-        else:
-            if self.selected_square is None:
-                piece = self.board.piece_at(square)
-                if piece is not None and piece.color == self.board.turn:
-                    self.selected_square = square
-                    self.legal_moves = [move for move in self.board.legal_moves if move.from_square == square]
-                    self.update()
+    # Update mousePressEvent to use the mapping.
+    def mousePressEvent(self, event):
+        pos = event.position()  # localPos()
+        file_idx, rank_idx = self.map_position_to_square(pos)
+        square = chess.square(file_idx, rank_idx)
+        piece = self.board.piece_at(square)
+        if event.button() == Qt.LeftButton and piece is not None:
+            self.dragging = True
+            self.drag_start_square = square
+            # Instead of computing a global offset from self.width(),
+            # use the fixed board area (self.square_size*8) as reference.
+            if self.board_orientation == chess.WHITE:
+                target_top_left = QPointF(file_idx * self.square_size,
+                                          (7 - rank_idx) * self.square_size)
             else:
-                move = chess.Move(self.selected_square, square)
-                if move in self.legal_moves:
-                    self.board.push(move)
-                    self.selected_square = None
-                    self.legal_moves = []
-                    self.best_moves = []
-                else:
-                    self.selected_square = None
-                    self.legal_moves = []
-                self.update_board()
+                target_top_left = QPointF((7 - file_idx) * self.square_size,
+                                          rank_idx * self.square_size)
+            self.drag_offset = pos - target_top_left
+            self.drag_current_pos = pos
+        else:
+            super().mousePressEvent(event)
+        self.update()
+
+    def mouseMoveEvent(self, event):
+        if self.dragging:
+            self.drag_current_pos = event.position()
+            self.update()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self.dragging:
+            pos = event.position()
+            file_idx, rank_idx = self.map_position_to_square(pos)
+            drop_square = chess.square(file_idx, rank_idx)
+            move = chess.Move(self.drag_start_square, drop_square)
+            if move in self.board.legal_moves:
+                self.board.push(move)
+            self.dragging = False
+            self.drag_start_square = None
+            self.drag_current_pos = None
+            self.drag_offset = None
+            self.update_board()  # re-render board
+        else:
+            super().mouseReleaseEvent(event)
 
     def show_piece_menu(self, pos, square):
         menu = QMenu(self)
@@ -169,7 +208,30 @@ class ChessBoard(QSvgWidget):
 
         #         painter.drawLine(from_x, from_y, to_x, to_y)
 
+        if self.dragging and self.drag_start_square is not None and self.drag_current_pos is not None:
+            piece = self.board.piece_at(self.drag_start_square)
+            if piece:
+                # Draw the piece image instead of text
+                pixmap = self.get_piece_pixmap(piece)
+                target_pos = self.drag_current_pos - self.drag_offset
+                painter.drawPixmap(target_pos, pixmap)
+
         painter.end()
+
+    def get_piece_pixmap(self, piece):
+        prefix = "w" if piece.color == chess.WHITE else "b"
+        letter = piece.symbol().upper()
+        path = f"c:/Users/LPC/Documents/Programs/BoardMaster/piece_images/{prefix.lower()}{letter.lower()}.png"
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            print(f"Error: Failed to load image from {path}")
+            pixmap = QPixmap(self.square_size, self.square_size)
+            pixmap.fill(Qt.transparent)
+            temp_painter = QPainter(pixmap)
+            temp_painter.setPen(Qt.black)
+            temp_painter.drawText(pixmap.rect(), Qt.AlignCenter, piece.symbol())
+            temp_painter.end()
+        return pixmap.scaled(self.square_size, self.square_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
 
 class BoardEditor(QMainWindow):
     def __init__(self, engine : chess.engine = None, fen=None, threads=None, multipv=None, mem=None, time=None, depth=None):
@@ -197,6 +259,9 @@ class BoardEditor(QMainWindow):
         self.analyze_button = QPushButton("Analyze Position")
         self.analyze_button.clicked.connect(self.board_widget.analyze_position)
 
+        self.flip_button = QPushButton("Flip Board")
+        self.flip_button.clicked.connect(self.board_widget.flip_board)
+
         self.fen_input = QLineEdit()
         self.fen_input.setPlaceholderText("Enter FEN")
         if self.fen:
@@ -213,6 +278,7 @@ class BoardEditor(QMainWindow):
         button_layout.addWidget(self.clear_button)
         button_layout.addWidget(self.undo_button)
         button_layout.addWidget(self.analyze_button)
+        button_layout.addWidget(self.flip_button)
 
         layout.addLayout(button_layout)
         layout.addWidget(self.fen_input)
@@ -238,6 +304,7 @@ class BoardEditor(QMainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     engine_path = "/usr/bin/stockfish"  # Adjust path as needed
+    # engine_path = "C:\\Users\\LPC\\Documents\\Programs\\ChessEngine\\x64\\Debug\\ChessEngine.exe"
     window = BoardEditor(engine_path)
     window.show()
     sys.exit(app.exec())
