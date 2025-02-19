@@ -5,8 +5,8 @@ import chess.svg
 import io
 from PySide6.QtWidgets import *
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtCore import QByteArray, QSettings, Qt, QPointF
-from PySide6.QtGui import QPainter, QColor, QPixmap
+from PySide6.QtCore import QByteArray, QSettings, Qt, QPointF, QRectF
+from PySide6.QtGui import QPainter, QColor, QPixmap, QPen, QFont
 import math
 from utils import MoveRow
 
@@ -17,6 +17,8 @@ class CustomSVGWidget(QSvgWidget):
         self.squares = {}  # {square: QColor, ...}
         self.square_size = 70
         self.drag_info = {}  # New: info dict passed from GameTab
+        self.highlight_moves = []  # NEW: squares to highlight
+        self.last_move_eval = None  # NEW: Store evaluation symbol for last move
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -33,6 +35,21 @@ class CustomSVGWidget(QSvgWidget):
             x = global_offset + file * self.square_size + inner_offset
             y = global_offset + rank * self.square_size + inner_offset
             painter.fillRect(x, y, size, size, color)
+        # NEW: draw highlighted circles for legal moves
+        if self.highlight_moves:
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            pen = QPen(QColor(0, 150, 0, 200), 2)  # Reduced pen width
+            painter.setPen(pen)
+            brush = QColor(0, 150, 0, 100)
+            painter.setBrush(brush)
+            for sq in self.highlight_moves:
+                file = chess.square_file(sq)
+                rank = 7 - chess.square_rank(sq)
+                x = global_offset + file * self.square_size
+                y = global_offset + rank * self.square_size
+                center = QPointF(x + self.square_size / 2, y + self.square_size / 2)
+                radius = self.square_size / 5  # Smaller radius (was /3)
+                painter.drawEllipse(center, radius, radius)
         # If drag_info is set, draw the dragged piece pixmap.
         if self.drag_info.get("dragging"):
             pixmap = self.drag_info.get("pixmap")
@@ -41,6 +58,17 @@ class CustomSVGWidget(QSvgWidget):
             if pixmap and pos and offset:
                 target = pos - offset  # so image remains centered under mouse
                 painter.drawPixmap(target, pixmap)
+        # NEW: Draw evaluation symbol on last move's destination square
+        if self.last_move_eval:
+            painter.setFont(QFont('Segoe UI Symbol', int(self.square_size/3)))
+            last_move = self.last_move_eval['move']
+            eval_symbol = self.last_move_eval['symbol']
+            file = chess.square_file(last_move.to_square)
+            rank = 7 - chess.square_rank(last_move.to_square)
+            x = global_offset + file * self.square_size
+            y = global_offset + rank * self.square_size
+            painter.drawText(QRectF(x-20, y-20, self.square_size, self.square_size), 
+                           Qt.AlignCenter, eval_symbol)
         painter.end()
 
 class GameTab(QWidget):
@@ -449,6 +477,20 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 self.board_display.drag_info = {"dragging": False}
         else:
             self.board_display.drag_info = {"dragging": False}
+        
+        # Update last move evaluation display
+        if self.current_move_index > 0 and self.moves:
+            last_move = self.moves[self.current_move_index - 1]
+            if self.current_move_index - 1 < len(self.move_evaluations):
+                self.board_display.last_move_eval = {
+                    'move': last_move,
+                    'symbol': self.move_evaluations[self.current_move_index - 1]
+                }
+            else:
+                self.board_display.last_move_eval = None
+        else:
+            self.board_display.last_move_eval = None
+
         self.board_display.repaint()
 
         self.win_bar.setStyleSheet(
@@ -613,6 +655,12 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         square = chess.square(file_idx, rank_idx)
         piece = self.current_board.piece_at(square)
         if event.button() == Qt.LeftButton and piece:
+            # Highlight target squares for this piece.
+            legal = [move for move in self.current_board.legal_moves if move.from_square == square]
+            self.board_display.highlight_moves = [move.to_square for move in legal]
+            # Optionally, store the selected square.
+            self.selected_square = square
+            self.board_display.update()
             self.dragging = True
             self.drag_start_square = square
             # Compute board_display global offset
@@ -669,11 +717,14 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 # Only add the move to the move list for live games
                 if self.is_live_game:
                     self.moves.append(move)
+                    # Clear last_move_eval since this is a live game move
+                    self.board_display.last_move_eval = None
             self.dragging = False
             self.drag_start_square = None
             self.drag_current_pos = None
             self.drag_offset = None
             self.board_display.drag_info = {"dragging": False}
+            self.board_display.highlight_moves = []  # Clear highlights
             self.update_display()  # full update after move
         else:
             super().mouseReleaseEvent(event)
