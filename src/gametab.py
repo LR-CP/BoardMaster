@@ -551,6 +551,14 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             self.move_list.addItem(item)
             self.move_list.setItemWidget(item, move_widget)
             
+            # NEW: Highlight current move
+            if i < self.current_move_index <= i + 1:
+                move_widget.highlight_white()
+            elif i + 1 < self.current_move_index <= i + 2:
+                move_widget.highlight_black()
+            else:
+                move_widget.highlight_off()
+            
             i += 2
             move_number += 1
 
@@ -650,28 +658,39 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
 
     def mousePressEvent(self, event):
         pos = event.localPos()  # use localPos for consistency
-        file_idx = int(pos.x() // self.square_size)
-        rank_idx = 7 - int(pos.y() // self.square_size)
+        
+        # Adjust coordinate calculation based on board orientation
+        if self.flipped:
+            file_idx = 7 - int(pos.x() // self.square_size)
+            rank_idx = int(pos.y() // self.square_size)
+        else:
+            file_idx = int(pos.x() // self.square_size)
+            rank_idx = 7 - int(pos.y() // self.square_size)
+            
         square = chess.square(file_idx, rank_idx)
         piece = self.current_board.piece_at(square)
         if event.button() == Qt.LeftButton and piece:
-            # Highlight target squares for this piece.
             legal = [move for move in self.current_board.legal_moves if move.from_square == square]
             self.board_display.highlight_moves = [move.to_square for move in legal]
-            # Optionally, store the selected square.
             self.selected_square = square
             self.board_display.update()
             self.dragging = True
             self.drag_start_square = square
-            # Compute board_display global offset
+            
+            # Compute correct position based on orientation
             global_offset = (self.board_display.width() - (self.square_size * 8)) / 2
-            target_top_left = QPointF(global_offset + file_idx * self.square_size,
-                                      global_offset + (7 - rank_idx) * self.square_size)
-            # Store drag_offset only once
+            if self.flipped:
+                target_top_left = QPointF(global_offset + (7 - file_idx) * self.square_size,
+                                        global_offset + rank_idx * self.square_size)
+            else:
+                target_top_left = QPointF(global_offset + file_idx * self.square_size,
+                                        global_offset + (7 - rank_idx) * self.square_size)
+                                        
             self.drag_offset = pos - target_top_left
             self.drag_current_pos = pos
-            # Update the drag overlay immediately
+            
             self.board_display.drag_info = {
+                "dragging": True,
                 "drag_current_pos": self.drag_current_pos,
                 "drag_offset": self.drag_offset,
                 "pixmap": self.get_piece_pixmap(piece)
@@ -703,13 +722,20 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
 
     def mouseReleaseEvent(self, event):
         if self.dragging:
-            # Subtract the same offset applied in mouseMoveEvent
+            pos = event.localPos()
             if self.is_live_game is False:
-                pos = event.localPos() - QPointF(44, 129)
+                pos = pos - QPointF(44, 129)
             else:
-                pos = event.localPos() - QPointF(44, 89)
-            file_idx = int(pos.x() // self.square_size)
-            rank_idx = 7 - int(pos.y() // self.square_size)
+                pos = pos - QPointF(44, 89)
+                
+            # Adjust coordinate calculation based on board orientation
+            if self.flipped:
+                file_idx = 7 - int(pos.x() // self.square_size)
+                rank_idx = int(pos.y() // self.square_size)
+            else:
+                file_idx = int(pos.x() // self.square_size)
+                rank_idx = 7 - int(pos.y() // self.square_size)
+                
             drop_square = chess.square(file_idx, rank_idx)
             move = chess.Move(self.drag_start_square, drop_square)
             if move in self.current_board.legal_moves:

@@ -134,14 +134,19 @@ class ChessBoard(QSvgWidget):
             self.highlight_moves = [move.to_square for move in legal]
             self.dragging = True
             self.drag_start_square = square
-            # Instead of computing a global offset from self.width(),
-            # use the fixed board area (self.square_size*8) as reference.
+            
+            # NEW: Handle piece position calculation for both normal and flipped board
             if self.board_orientation == chess.WHITE:
-                target_top_left = QPointF(file_idx * self.square_size,
-                                          (7 - rank_idx) * self.square_size)
+                target_top_left = QPointF(
+                    file_idx * self.square_size,
+                    (7 - rank_idx) * self.square_size
+                )
             else:
-                target_top_left = QPointF((7 - file_idx) * self.square_size,
-                                          rank_idx * self.square_size)
+                target_top_left = QPointF(
+                    (7 - file_idx) * self.square_size,
+                    rank_idx * self.square_size
+                )
+                
             self.drag_offset = pos - target_top_left
             self.drag_current_pos = pos
         else:
@@ -160,7 +165,10 @@ class ChessBoard(QSvgWidget):
             pos = event.position()
             file_idx, rank_idx = self.map_position_to_square(pos)
             drop_square = chess.square(file_idx, rank_idx)
+            
+            # NEW: Adjust the move calculation based on board orientation
             move = chess.Move(self.drag_start_square, drop_square)
+            
             if move in self.board.legal_moves:
                 self.board.push(move)
             self.dragging = False

@@ -1,7 +1,9 @@
 from PySide6.QtWidgets import *
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QIcon
 import os
+import chess.pgn
+import io
 
 
 class HelpDialog(QDialog):
@@ -120,3 +122,96 @@ class SettingsDialog(QDialog):
         self.settings.setValue("engine/memory", self.memory_spin.value())
         self.parent().engine = self.parent().initialize_engine()
         self.accept()
+
+class PGNSplitterDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("PGN Splitter")
+        self.setMinimumSize(600, 400)
+        
+        layout = QVBoxLayout(self)
+        
+        # Instructions
+        instructions = QLabel(
+            "Either paste PGN text directly or load from a file.\n"
+            "Games will be split into individual PGN files."
+        )
+        layout.addWidget(instructions)
+        
+        # Text area for PGN input
+        self.pgn_text = QTextEdit()
+        self.pgn_text.setPlaceholderText("Paste PGN here...")
+        layout.addWidget(self.pgn_text)
+        
+        # Buttons
+        btn_layout = QVBoxLayout()
+        self.load_btn = QPushButton("Load PGN File")
+        self.load_btn.clicked.connect(self.load_pgn_file)
+        btn_layout.addWidget(self.load_btn)
+        
+        self.split_btn = QPushButton("Split and Save")
+        self.split_btn.clicked.connect(self.split_pgn)
+        btn_layout.addWidget(self.split_btn)
+        
+        layout.addLayout(btn_layout)
+    
+    def load_pgn_file(self):
+        file_name, _ = QFileDialog.getOpenFileName(
+            self, "Open PGN File", "", "PGN files (*.pgn);;All files (*.*)"
+        )
+        if file_name:
+            with open(file_name, 'r') as f:
+                self.pgn_text.setText(f.read())
+    
+    def split_pgn(self):
+        pgn_content = self.pgn_text.toPlainText()
+        if not pgn_content.strip():
+            return
+            
+        # Get output directory
+        output_dir = QFileDialog.getExistingDirectory(
+            self, "Select Output Directory"
+        )
+        if not output_dir:
+            return
+            
+        # Create a progress dialog
+        progress = QProgressDialog(
+            "Splitting PGN files...", "Cancel", 0, 100, self
+        )
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.show()
+        QApplication.processEvents()
+        
+        try:
+            # Read games from the PGN text
+            pgn_io = io.StringIO(pgn_content)
+            game_count = 0
+            while True:
+                game = chess.pgn.read_game(pgn_io)
+                if game is None:
+                    break
+                    
+                # Generate filename from game metadata
+                white = game.headers.get("White", "Unknown")
+                black = game.headers.get("Black", "Unknown")
+                date = game.headers.get("Date", "Unknown").replace(".", "-")
+                fname = f"{white}_vs_{black}_{date}_{game_count}.pgn"
+                fname = "".join(c for c in fname if c.isalnum() or c in "._- ")
+                
+                # Save individual game
+                with open(os.path.join(output_dir, fname), 'w') as f:
+                    f.write(str(game))
+                
+                game_count += 1
+                progress.setValue(int((game_count % 100) * (100/100)))
+                
+            progress.setValue(100)
+            self.pgn_text.clear()
+            self.pgn_text.setPlaceholderText(
+                f"Successfully split {game_count} games into {output_dir}"
+            )
+            
+        except Exception as e:
+            progress.cancel()
+            self.pgn_text.setPlaceholderText(f"Error splitting PGN: {str(e)}")

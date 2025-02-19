@@ -25,15 +25,34 @@ class MoveRow(QWidget):
         
         # White's move
         white_text = f"{white_move} {white_eval}"
-        white_label = MoveLabel(white_text, white_index, game_tab, self)
-        white_label.setFixedWidth(100)
-        layout.addWidget(white_label)
+        self.white_label = MoveLabel(white_text, white_index, game_tab, self)
+        self.white_label.setFixedWidth(100)
+        layout.addWidget(self.white_label)
         
         # Black's move if exists
         if black_move:
             black_text = f"{black_move} {black_eval}"
-            black_label = MoveLabel(black_text, black_index, game_tab, self)
-            black_label.setFixedWidth(100)
-            layout.addWidget(black_label)
+            self.black_label = MoveLabel(black_text, black_index, game_tab, self)
+            self.black_label.setFixedWidth(100)
+            layout.addWidget(self.black_label)
+        else:
+            self.black_label = QLabel()
         
         layout.addStretch()
+
+        # NEW: Add method to highlight moves
+        self.white_label.setAutoFillBackground(True)
+        self.black_label.setAutoFillBackground(True)
+        self.highlight_off()
+
+    def highlight_white(self):
+        self.white_label.setStyleSheet("background-color: rgba(255, 255, 0, 100);")
+        self.black_label.setStyleSheet("background-color: grey")
+
+    def highlight_black(self):
+        self.white_label.setStyleSheet("background-color: grey")
+        self.black_label.setStyleSheet("background-color: rgba(255, 255, 0, 100);")
+
+    def highlight_off(self):
+        self.white_label.setStyleSheet("background-color: grey")
+        self.black_label.setStyleSheet("background-color: grey")
