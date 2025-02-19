@@ -26,6 +26,7 @@ class ChessBoard(QSvgWidget):
         self.best_moves = []
         self.selected_square = None
         self.legal_moves = []
+        self.highlight_moves = []  # NEW: stores squares to highlight for legal moves
         # Drag/drop state
         self.dragging = False
         self.drag_start_square = None
@@ -128,6 +129,9 @@ class ChessBoard(QSvgWidget):
         square = chess.square(file_idx, rank_idx)
         piece = self.board.piece_at(square)
         if event.button() == Qt.LeftButton and piece is not None:
+            # NEW: Add highlight moves
+            legal = [move for move in self.board.legal_moves if move.from_square == square]
+            self.highlight_moves = [move.to_square for move in legal]
             self.dragging = True
             self.drag_start_square = square
             # Instead of computing a global offset from self.width(),
@@ -163,6 +167,7 @@ class ChessBoard(QSvgWidget):
             self.drag_start_square = None
             self.drag_current_pos = None
             self.drag_offset = None
+            self.highlight_moves = []  # NEW: Clear highlights
             self.update_board()  # re-render board
         else:
             super().mouseReleaseEvent(event)
@@ -181,6 +186,10 @@ class ChessBoard(QSvgWidget):
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
+        
+        # NEW: Add global_offset calculation like in gametab.py
+        board_size = 8 * self.square_size
+        global_offset = (self.width() - board_size) / 2
 
         if self.selected_square is not None:
             file = chess.square_file(self.selected_square)
@@ -191,6 +200,23 @@ class ChessBoard(QSvgWidget):
                 to_file = chess.square_file(move.to_square)
                 to_rank = 7 - chess.square_rank(move.to_square)
                 painter.fillRect(to_file * self.square_size, to_rank * self.square_size, self.square_size, self.square_size, QColor(0, 200, 0, 100))
+
+        # Updated circle drawing with correct offset
+        if self.highlight_moves:
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            pen = QPen(QColor(0, 150, 0, 200), 2)  # Reduced pen width
+            painter.setPen(pen)
+            brush = QColor(0, 150, 0, 100)
+            painter.setBrush(brush)
+            for sq in self.highlight_moves:
+                file = chess.square_file(sq)
+                rank = 7 - chess.square_rank(sq)
+                # Calculate center position based on square coordinates
+                square_center_x = (file + 0.5) * self.square_size
+                square_center_y = (rank + 0.5) * self.square_size
+                center = QPointF(square_center_x, square_center_y)
+                radius = self.square_size / 5  # Smaller radius (was /3)
+                painter.drawEllipse(center, radius, radius)
 
         # if self.best_moves: # Keep maybe can change arrows to use this
         #     pen = QPen(QColor(255, 0, 0))
