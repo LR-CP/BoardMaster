@@ -10,7 +10,6 @@ from interactive_board import BoardEditor
 from gametab import GameTab
 from dialogs import *
 
-
 class BoardMaster(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -63,6 +62,11 @@ class BoardMaster(QMainWindow):
         interactive_board_action.setShortcut(QKeySequence("Ctrl+P"))
         interactive_board_action.triggered.connect(self.open_interactive_board)
         tool_menu.addAction(interactive_board_action)
+        # Add PGN Splitter action
+        split_pgn_action = QAction("PGN Splitter", self)
+        split_pgn_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        split_pgn_action.triggered.connect(self.show_pgn_splitter)
+        tool_menu.addAction(split_pgn_action)
 
         settings_menu = menubar.addMenu("&Settings")
         open_settings = QAction("Engine Settings", self)
@@ -89,22 +93,26 @@ class BoardMaster(QMainWindow):
         extra_paths = [
             "C:/Program Files/stockfish/",
             "C:/Program Files (x86)/stockfish/",
-            "stockfish/",
+            "./stockfish/",
         ]
 
         # Function to show error dialog
         def show_error(message):
             QMessageBox.critical(self, "Stockfish Error", message)
 
+        for path in extra_paths:
+            if os.path.exists(path):
+                executable = f"{path}/stockfish.exe"
+                print(executable)
+
+        # executable = "C:/Users/LPC/Documents/Programs/ChessEngine/x64/Debug/ChessEngine.exe"
+
         # Try to find Stockfish in PATH and common locations
         try:
             if sys.platform == "win32":
                 try:
-                    engine = chess.engine.SimpleEngine.popen_uci("stockfish.exe")
-                    engine.configure({
-                        'Threads': self.settings.value("engine/threads", 4, int),
-                        'Hash': self.settings.value("engine/memory", 16, int),
-                    })
+                    engine = chess.engine.SimpleEngine.popen_uci(executable)
+                    engine.configure(config)
                     return engine
                 
                 except FileNotFoundError:
@@ -133,6 +141,10 @@ class BoardMaster(QMainWindow):
     def open_settings(self):
         dialog = SettingsDialog(self)
         dialog.exec()
+    
+    def show_pgn_splitter(self):
+        splitter = PGNSplitterDialog(self)
+        splitter.exec()
 
     def open_help(self):
         help_dialog = HelpDialog(self)

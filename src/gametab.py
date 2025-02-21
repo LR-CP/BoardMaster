@@ -19,55 +19,63 @@ class CustomSVGWidget(QSvgWidget):
         self.drag_info = {}  # New: info dict passed from GameTab
         self.highlight_moves = []  # NEW: squares to highlight
         self.last_move_eval = None  # NEW: Store evaluation symbol for last move
+        self.flipped = False
 
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
-        # Compute a global offset if the widget size exceeds the board size.
         board_size = 8 * self.square_size
         global_offset = (self.width() - board_size) / 2
-        # Center a rectangle that is 75% of square_size within each square.
-        inner_offset = (self.square_size - (self.square_size * 1)) / 2
-        size = self.square_size * 1
+        inner_offset = 0  # simplified
+
+        def get_square_coordinates(square, type=None):
+            f = chess.square_file(square)
+            r = chess.square_rank(square)
+            if type is not None and self.flipped:
+                return 7 - f, r     # Flip file, keep rank as-is
+            else:
+                return f, 7 - r     # Normal: invert rank for top-left origin
+
+        # Draw square overlays
         for square, color in self.squares.items():
-            file = chess.square_file(square)
-            rank = 7 - chess.square_rank(square)
-            x = global_offset + file * self.square_size + inner_offset
-            y = global_offset + rank * self.square_size + inner_offset
-            painter.fillRect(x, y, size, size, color)
-        # NEW: draw highlighted circles for legal moves
+            disp_file, disp_rank = get_square_coordinates(square)
+            x = global_offset + disp_file * self.square_size + inner_offset
+            y = global_offset + disp_rank * self.square_size + inner_offset
+            painter.fillRect(x, y, self.square_size, self.square_size, color)
+
+        # Draw highlighted circles for legal moves
         if self.highlight_moves:
             painter.setRenderHint(QPainter.Antialiasing, True)
-            pen = QPen(QColor(0, 150, 0, 200), 2)  # Reduced pen width
+            pen = QPen(QColor(0, 150, 0, 200), 2)
             painter.setPen(pen)
             brush = QColor(0, 150, 0, 100)
             painter.setBrush(brush)
             for sq in self.highlight_moves:
-                file = chess.square_file(sq)
-                rank = 7 - chess.square_rank(sq)
+                file, rank = get_square_coordinates(sq)
                 x = global_offset + file * self.square_size
                 y = global_offset + rank * self.square_size
                 center = QPointF(x + self.square_size / 2, y + self.square_size / 2)
-                radius = self.square_size / 5  # Smaller radius (was /3)
+                radius = self.square_size / 5
                 painter.drawEllipse(center, radius, radius)
-        # If drag_info is set, draw the dragged piece pixmap.
+
+        # Draw drag info
         if self.drag_info.get("dragging"):
             pixmap = self.drag_info.get("pixmap")
             pos = self.drag_info.get("drag_current_pos")
             offset = self.drag_info.get("drag_offset")
             if pixmap and pos and offset:
-                target = pos - offset  # so image remains centered under mouse
+                target = pos - offset
                 painter.drawPixmap(target, pixmap)
-        # NEW: Draw evaluation symbol on last move's destination square
+
+        # Draw evaluation symbol with correct coordinates
         if self.last_move_eval:
             painter.setFont(QFont('Segoe UI Symbol', int(self.square_size/3)))
             last_move = self.last_move_eval['move']
             eval_symbol = self.last_move_eval['symbol']
-            file = chess.square_file(last_move.to_square)
-            rank = 7 - chess.square_rank(last_move.to_square)
-            x = global_offset + file * self.square_size
-            y = global_offset + rank * self.square_size
-            painter.drawText(QRectF(x-20, y-20, self.square_size, self.square_size), 
+            disp_file, disp_rank = get_square_coordinates(last_move.to_square, "symbol")
+            x = global_offset + disp_file * self.square_size
+            y = global_offset + disp_rank * self.square_size
+            painter.drawText(QRectF(x, y, self.square_size, self.square_size), 
                            Qt.AlignCenter, eval_symbol)
         painter.end()
 
@@ -111,7 +119,7 @@ class GameTab(QWidget):
         self.win_bar = QLabel()
         self.win_bar.setFixedSize(20, 600)
         # Use our custom SVG widget
-        self.board_display = CustomSVGWidget()
+        self.board_display = CustomSVGWidget(self)
         self.board_display.setFixedSize(600, 600)
         board_layout.addWidget(self.win_bar)
         board_layout.addWidget(self.board_display)
@@ -394,6 +402,12 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 return -20000 - eval_score.mate() * 10
         return eval_score.score()
     
+    def get_logical_square(self, square):
+        """Convert a board square to its flipped equivalent if board is flipped"""
+        if self.flipped:
+            return chess.square(7 - chess.square_file(square), 7 - chess.square_rank(square))
+        return square
+
     def update_display(self):
         arrows = []
         annotations = {}
@@ -444,14 +458,18 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         # Overlay a transparent purple square on the destination of the most recent move.
         if self.current_move_index > 0 and self.moves:
             last_move = self.moves[self.current_move_index - 1]
-            squares[last_move.to_square] = QColor(128, 0, 128, 100)
-            squares[last_move.from_square] = QColor(128, 0, 128, 100)
+            # Convert move squares to match the display orientation
+            display_to_square = self.get_logical_square(last_move.to_square)
+            display_from_square = self.get_logical_square(last_move.from_square)
+            squares[display_to_square] = QColor(128, 0, 128, 100)
+            squares[display_from_square] = QColor(128, 0, 128, 100)
 
         # Make the king glow red when in check or mate.
         if self.current_board.is_check():
             king_square = self.current_board.king(self.current_board.turn)
             if king_square is not None:
-                squares[king_square] = QColor(255, 0, 0, 150)
+                display_king_square = self.get_logical_square(king_square)
+                squares[display_king_square] = QColor(255, 0, 0, 150)
 
         # Generate the base SVG board (without overlays)
         board_svg = chess.svg.board(
@@ -645,6 +663,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
 
     def board_flip(self):
         self.flipped = not self.flipped
+        self.board_display.flipped = self.flipped
         self.board_orientation = not getattr(self, "board_orientation", False)
         self.update_display()
 
