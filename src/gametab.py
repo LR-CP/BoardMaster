@@ -759,11 +759,18 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             move = chess.Move(self.drag_start_square, drop_square)
             if move in self.current_board.legal_moves:
                 self.current_board.push(move)
-                # Only add the move to the move list for live games
+                # Only add/update the move for live games
                 if self.is_live_game:
+                    # If we're not at the end of the move list, truncate it
+                    if self.current_move_index < len(self.moves):
+                        self.moves = self.moves[:self.current_move_index]
+                        if hasattr(self, 'move_evaluations'):
+                            self.move_evaluations = self.move_evaluations[:self.current_move_index]
                     self.moves.append(move)
+                    self.current_move_index += 1
                     # Clear last_move_eval since this is a live game move
                     self.board_display.last_move_eval = None
+
             self.dragging = False
             self.drag_start_square = None
             self.drag_current_pos = None
