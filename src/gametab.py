@@ -37,8 +37,8 @@ class CustomSVGWidget(QSvgWidget):
                 return f, 7 - r     # Normal: invert rank for top-left origin
 
         # Draw square overlays
-        for square, color in self.squares.items():
-            disp_file, disp_rank = get_square_coordinates(square)
+        for square, color in self.squares.items(): # For mouse release yellow highlight of clicked piece
+            disp_file, disp_rank = get_square_coordinates(square, "clicked")
             x = global_offset + disp_file * self.square_size + inner_offset
             y = global_offset + disp_rank * self.square_size + inner_offset
             painter.fillRect(x, y, self.square_size, self.square_size, color)
@@ -51,7 +51,7 @@ class CustomSVGWidget(QSvgWidget):
             brush = QColor(0, 150, 0, 100)
             painter.setBrush(brush)
             for sq in self.highlight_moves:
-                file, rank = get_square_coordinates(sq)
+                file, rank = get_square_coordinates(sq, "circles")
                 x = global_offset + file * self.square_size
                 y = global_offset + rank * self.square_size
                 center = QPointF(x + self.square_size / 2, y + self.square_size / 2)
@@ -401,12 +401,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             else:
                 return -20000 - eval_score.mate() * 10
         return eval_score.score()
-    
-    def get_logical_square(self, square):
-        """Convert a board square to its flipped equivalent if board is flipped"""
-        if self.flipped:
-            return chess.square(7 - chess.square_file(square), 7 - chess.square_rank(square))
-        return square
 
     def update_display(self):
         arrows = []
@@ -459,17 +453,14 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         if self.current_move_index > 0 and self.moves:
             last_move = self.moves[self.current_move_index - 1]
             # Convert move squares to match the display orientation
-            display_to_square = self.get_logical_square(last_move.to_square)
-            display_from_square = self.get_logical_square(last_move.from_square)
-            squares[display_to_square] = QColor(128, 0, 128, 100)
-            squares[display_from_square] = QColor(128, 0, 128, 100)
+            squares[last_move.to_square] = QColor(128, 0, 128, 100)
+            squares[last_move.from_square] = QColor(128, 0, 128, 100)
 
         # Make the king glow red when in check or mate.
         if self.current_board.is_check():
             king_square = self.current_board.king(self.current_board.turn)
             if king_square is not None:
-                display_king_square = self.get_logical_square(king_square)
-                squares[display_king_square] = QColor(255, 0, 0, 150)
+                squares[king_square] = QColor(255, 0, 0, 150)
 
         # Generate the base SVG board (without overlays)
         board_svg = chess.svg.board(
