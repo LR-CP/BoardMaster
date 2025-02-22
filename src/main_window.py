@@ -16,7 +16,8 @@ class BoardMaster(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("BoardMaster")
-        self.setGeometry(100, 100, 1400, 900)
+        self.setGeometry(100, 100, 1600, 900)
+        self.setFixedSize(1600, 900)
         self.setWindowIcon(QIcon("./img/king.ico"))
 
         self.settings = QSettings("BoardMaster", "BoardMaster")
@@ -29,26 +30,56 @@ class BoardMaster(QMainWindow):
         self.create_menus()
 
     def create_gui(self):
+        # Create main layout
+        main_layout = QHBoxLayout()
+        
+        # Left side with tab widget
         self.tab_widget = QTabWidget(tabsClosable=True)
         self.tab_widget.tabCloseRequested.connect(self.tab_widget.removeTab)
-        self.setCentralWidget(self.tab_widget)
+        self.new_tab = GameTab(self)
+        self.tab_widget.addTab(self.new_tab, "Live Game")
+        main_layout.addWidget(self.tab_widget)
 
-        pgn_dock = QDockWidget("PGN Input", self)
-        pgn_widget = QWidget()
-        pgn_layout = QVBoxLayout(pgn_widget)
-
+        # Right side with PGN input
+        right_panel = QWidget()
+        right_panel.setFixedWidth(300)  # Fixed width of 300px
+        right_layout = QVBoxLayout(right_panel)
+        
+        # PGN widgets
+        right_layout.addWidget(QLabel("PGN Input:"))
         self.pgn_text = QTextEdit()
         load_button = QPushButton("Load Game")
         load_button.clicked.connect(self.load_game)
+        
+        right_layout.addWidget(self.pgn_text)
+        right_layout.addWidget(load_button)
+        main_layout.addWidget(right_panel)
 
-        pgn_layout.addWidget(self.pgn_text)
-        pgn_layout.addWidget(load_button)
+        # Create central widget to hold the layout
+        central_widget = QWidget()
+        central_widget.setLayout(main_layout)
+        self.setCentralWidget(central_widget)
 
-        pgn_dock.setWidget(pgn_widget)
-        self.addDockWidget(Qt.RightDockWidgetArea, pgn_dock)
+        # pgn_dock.setWidget(pgn_widget)
+        # self.addDockWidget(Qt.RightDockWidgetArea, pgn_dock)
 
-        self.new_tab = GameTab(self)
-        self.tab_widget.addTab(self.new_tab, f"Live Game")
+        # # NEW: Create dock widgets for move list, analysis, and evaluation graph extracted from GameTab
+        # self.move_dock = QDockWidget("Move List", self)
+        # self.move_dock.setAllowedAreas(Qt.RightDockWidgetArea)
+        # self.move_dock.setWidget(self.new_tab.move_list)
+        # self.addDockWidget(Qt.RightDockWidgetArea, self.move_dock)
+        
+        # self.analysis_dock = QDockWidget("Analysis", self)
+        # self.analysis_dock.setAllowedAreas(Qt.RightDockWidgetArea)
+        # self.analysis_dock.setWidget(self.new_tab.analysis_text)
+        # self.addDockWidget(Qt.RightDockWidgetArea, self.analysis_dock)
+        # # Tabify move list and analysis docks together
+        # self.tabifyDockWidget(self.move_dock, self.analysis_dock)
+        
+        # self.eval_dock = QDockWidget("Game Evaluation", self)
+        # self.eval_dock.setAllowedAreas(Qt.BottomDockWidgetArea)
+        # self.eval_dock.setWidget(self.new_tab.eval_graph)
+        # self.addDockWidget(Qt.BottomDockWidgetArea, self.eval_dock)
 
     def create_menus(self):
         menubar = self.menuBar()

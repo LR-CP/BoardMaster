@@ -8,9 +8,8 @@ from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtCore import QByteArray, QSettings, Qt, QPointF, QRectF
 from PySide6.QtGui import QPainter, QColor, QPixmap, QPen, QFont
 import math
-from utils import MoveRow
+from utils import MoveRow, EvaluationGraphPG
 
-# Updated CustomSVGWidget for centered square overlays and drag overlay
 class CustomSVGWidget(QSvgWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -102,6 +101,9 @@ class GameTab(QWidget):
         self.drag_start_square = None
         self.drag_current_pos = None
         self.drag_offset = None
+        self.move_evaluations_scores = []  # existing evaluations list for graphing
+        self.white_moves = [] # NEW: store white evaluations per move pair
+        self.black_moves = [] # NEW: store black evaluations per move pair
 
         self.create_gui()
 
@@ -170,6 +172,13 @@ class GameTab(QWidget):
         self.analysis_text = QTextEdit()
         self.analysis_text.setReadOnly(True)
         right_layout.addWidget(self.analysis_text)
+
+        # NEW: Add evaluation graph widget below analysis text
+        # self.graph_dock = QDockWidget("Evaluation Graph", self)
+        # self.graph_dock.setAllowedAreas(Qt.BottomDockWidgetArea)
+        self.eval_graph = EvaluationGraphPG(self)
+        right_layout.addWidget(self.eval_graph)
+        # self.graph_dock.setWidget(self.eval_graph)
 
         layout.addWidget(left_panel)
         layout.addWidget(right_panel)
@@ -576,6 +585,20 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             row = (self.current_move_index - 1) // 2
             self.move_list.setCurrentRow(row)
 
+        # Recompute white and black evaluations per move pair from move_evaluations_scores
+        self.white_moves = []
+        self.black_moves = []
+        board = chess.Board()
+        for i, move in enumerate(self.moves):
+            board.push(move)
+            if i % 2 == 0:  # White move evaluation
+                if i < len(self.move_evaluations_scores):
+                    self.white_moves.append(self.move_evaluations_scores[i])
+            else:  # Black move evaluation
+                if i < len(self.move_evaluations_scores):
+                    self.black_moves.append(self.move_evaluations_scores[i])
+        self.eval_graph.update_graph(self.white_moves, self.black_moves)
+
         # self.analyze_position() # Remove this for pre analysis (keep for move based analysis)
 
     def analyze_position(self):
@@ -668,13 +691,12 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         
     def is_within_board(self, pos):
         """Check if position is within chess board boundaries"""
-        board_x = 44
-        board_y = 89 if self.is_live_game else 129
-        board_width = 8 * self.square_size
-        board_height = 8 * self.square_size
-        
-        return (board_x <= pos.x() <= board_x + board_width and 
-                board_y <= pos.y() <= board_y + board_height)
+        board_size = 8 * self.square_size
+        global_offset = (self.board_display.width() - board_size) / 2
+        board_x = global_offset
+        board_y = global_offset
+        return (board_x <= pos.x() <= board_x + board_size and 
+                board_y <= pos.y() <= board_y + board_size)
 
     def mousePressEvent(self, event):
         pos = event.localPos()  # use localPos for consistency
@@ -723,8 +745,8 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         self.board_display.repaint()
 
     def mouseMoveEvent(self, event):
-        if not self.is_within_board(event.localPos()):
-            return super().mouseMoveEvent(event)
+        # if not self.is_within_board(event.localPos()):
+            # return super().mouseMoveEvent(event)
         if self.dragging:
             self.drag_current_pos = event.localPos()
             if self.is_live_game is False:
@@ -746,8 +768,8 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if not self.is_within_board(event.localPos()):
-            return super().mouseMoveEvent(event)
+        # if not self.is_within_board(event.localPos()):
+            # return super().mouseMoveEvent(event)
         if self.dragging:
             pos = event.localPos()
             if self.is_live_game is False:

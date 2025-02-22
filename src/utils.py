@@ -1,4 +1,32 @@
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy, QHBoxLayout, QLabel
+import pyqtgraph as pg
+
+class EvaluationGraphPG(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.plot_widget = pg.PlotWidget(title="Game Evaluation")
+        # Set size policy to allow resizing and a default smaller minimum size
+        self.plot_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.plot_widget.setMinimumHeight(100)
+        self.plot_widget.setMaximumHeight(200)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.plot_widget)
+        self.plot_widget.showGrid(x=True, y=True)
+        self.plot_widget.setLabel('left', "Evaluation (centipawns)")
+        self.plot_widget.setLabel('bottom', "Move Number")
+        # Set x-axis tick spacing to 1
+        x_axis = self.plot_widget.getAxis('bottom')
+        x_axis.setTickSpacing(1, 1)
+        
+        self.white_curve = self.plot_widget.plot(pen=pg.mkPen('b', width=2), symbol='o', name="White")
+        self.black_curve = self.plot_widget.plot(pen=pg.mkPen('r', width=2), symbol='o', name="Black")
+
+    def update_graph(self, white_evals, black_evals):
+        x_white = list(range(1, len(white_evals) + 1))
+        x_black = list(range(1, len(black_evals) + 1))
+        self.white_curve.setData(x_white, white_evals)
+        self.black_curve.setData(x_black, black_evals)
+
 
 class MoveLabel(QLabel):
     def __init__(self, text, move_index, game_tab, parent=None):
