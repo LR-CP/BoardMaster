@@ -201,9 +201,9 @@ class GameTab(QWidget):
         self.variation_evaluations = {}
         try:
             hdrs_io = io.StringIO(pgn_string)
-            hdrs = chess.pgn.read_headers(hdrs_io)
+            self.hdrs = chess.pgn.read_headers(hdrs_io)
             self.game_details.setText(
-                f"White: {hdrs.get("White")}({hdrs.get("WhiteElo")})\nBlack: {hdrs.get("Black")}({hdrs.get("BlackElo")})\n{hdrs.get("Date")}\nResult: {hdrs.get("Termination")}\n\n\nOpening: {hdrs.get("Opening")}"
+                f"White: {self.hdrs.get("White")}({self.hdrs.get("WhiteElo")})\nBlack: {self.hdrs.get("Black")}({self.hdrs.get("BlackElo")})\n{self.hdrs.get("Date")}\nResult: {self.hdrs.get("Termination")}\n\n\nOpening: {self.hdrs.get("Opening")}"
             )
         except Exception as e:
             print(f"Error loading game: {str(e)}")
@@ -665,9 +665,22 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             self.next_move()
         else:
             super().keyPressEvent(event)
+        
+    def is_within_board(self, pos):
+        """Check if position is within chess board boundaries"""
+        board_x = 44
+        board_y = 89 if self.is_live_game else 129
+        board_width = 8 * self.square_size
+        board_height = 8 * self.square_size
+        
+        return (board_x <= pos.x() <= board_x + board_width and 
+                board_y <= pos.y() <= board_y + board_height)
 
     def mousePressEvent(self, event):
         pos = event.localPos()  # use localPos for consistency
+
+        if not self.is_within_board(pos):
+            return super().mousePressEvent(event)
         
         # Adjust coordinate calculation based on board orientation
         if self.flipped:
@@ -710,6 +723,8 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         self.board_display.repaint()
 
     def mouseMoveEvent(self, event):
+        if not self.is_within_board(event.localPos()):
+            return super().mouseMoveEvent(event)
         if self.dragging:
             self.drag_current_pos = event.localPos()
             if self.is_live_game is False:
@@ -731,6 +746,8 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        if not self.is_within_board(event.localPos()):
+            return super().mouseMoveEvent(event)
         if self.dragging:
             pos = event.localPos()
             if self.is_live_game is False:

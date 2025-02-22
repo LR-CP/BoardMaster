@@ -16,7 +16,8 @@ if "%~1" == "" (
 if "%~1" == "nuitka" (
     cls
     echo Building using Nuitka
-    venv\Scripts\python.exe -m nuitka --standalone --onefile --windows-console-mode=disable --plugin-enable=pyside6 --include-data-files=./stockfish/stockfish.exe=stockfish.exe --windows-icon-from-ico=.\img\king.ico src/BoardMaster.py
+    venv\Scripts\python.exe -m nuitka --standalone --onefile --windows-console-mode=disable --plugin-enable=pyside6 --windows-icon-from-ico=.\img\king.ico src/BoardMaster.py
+    @REM --include-data-files=./stockfish/stockfish.exe=stockfish.exe
     goto :build_complete
 )
 @REM else if "%~1" == "pyinstaller" (

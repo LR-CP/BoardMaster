@@ -61,6 +61,16 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(QLabel("Engine Settings:"))
 
+        engine_layout = QHBoxLayout()
+        self.engine_path = QLineEdit()
+        self.engine_path.setText(self.settings.value("engine/path", "", str))
+        self.engine_path.setPlaceholderText("Path to engine executable (e.g. Stockfish)")
+        engine_browse = QPushButton("Browse")
+        engine_browse.clicked.connect(self.browse_engine)
+        engine_layout.addWidget(self.engine_path)
+        engine_layout.addWidget(engine_browse)
+        layout.addLayout(engine_layout)
+
         self.thread_spin = QSpinBox()
         self.thread_spin.setRange(1, os.cpu_count())
         self.thread_spin.setValue(self.settings.value("engine/threads", 4, int))
@@ -112,6 +122,16 @@ class SettingsDialog(QDialog):
         save_button.clicked.connect(self.save_settings)
         layout.addWidget(save_button)
 
+    def browse_engine(self):
+        file_name, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Chess Engine",
+            "",
+            "Executable files (*.exe);;All files (*.*)"
+        )
+        if file_name:
+            self.engine_path.setText(file_name)
+    
     def save_settings(self):
         self.settings.setValue("engine/depth", self.depth_spin.value())
         self.settings.setValue("display/show_arrows", self.show_arrows.isChecked())
@@ -120,6 +140,7 @@ class SettingsDialog(QDialog):
         self.settings.setValue("analysis/fulltime", self.seconds_input2.value())
         self.settings.setValue("engine/threads", self.thread_spin.value())
         self.settings.setValue("engine/memory", self.memory_spin.value())
+        self.settings.setValue("engine/path", self.engine_path.text())
         self.parent().engine = self.parent().initialize_engine()
         self.accept()
 

@@ -2,6 +2,8 @@ import chess
 import chess.pgn
 import chess.engine
 import chess.svg
+import pkg_resources
+import tempfile
 from PySide6.QtWidgets import *
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QAction, QIcon, QKeySequence
@@ -46,7 +48,7 @@ class BoardMaster(QMainWindow):
         self.addDockWidget(Qt.RightDockWidgetArea, pgn_dock)
 
         self.new_tab = GameTab(self)
-        self.tab_widget.addTab(self.new_tab, f"Game {self.tab_widget.count() + 1}")
+        self.tab_widget.addTab(self.new_tab, f"Live Game")
 
     def create_menus(self):
         menubar = self.menuBar()
@@ -81,54 +83,31 @@ class BoardMaster(QMainWindow):
         help_menu.addAction(open_help)
 
     def initialize_engine(self):
-        # List of possible Stockfish executable names
-        stockfish_names = ["stockfish.exe"]
-
-        config = {
-            "Threads": self.settings.value("engine/threads", 4, int),
-            "Hash": self.settings.value("engine/memory", 16, int)
-        }
-
-        # List of common installation directories
-        extra_paths = [
-            "C:/Program Files/stockfish/",
-            "C:/Program Files (x86)/stockfish/",
-            "./stockfish/",
-        ]
-
-        # Function to show error dialog
-        def show_error(message):
-            QMessageBox.critical(self, "Stockfish Error", message)
-
-        for path in extra_paths:
-            if os.path.exists(path):
-                executable = f"{path}/stockfish.exe"
-                print(executable)
-
-        # executable = "C:/Users/LPC/Documents/Programs/ChessEngine/x64/Debug/ChessEngine.exe"
-
-        # Try to find Stockfish in PATH and common locations
         try:
-            if sys.platform == "win32":
-                try:
-                    engine = chess.engine.SimpleEngine.popen_uci(executable)
-                    engine.configure(config)
-                    return engine
-                
-                except FileNotFoundError:
-                    pass
-
-            error_message = (
-                "Stockfish not found. Please ensure:\n\n"
-                "1. Stockfish is installed\n"
-                "2. The executable is named 'stockfish.exe' (Windows) or 'stockfish' (Mac/Linux)\n"
-                "3. The installation directory is in your system PATH\n\n"
-            )
-            show_error(error_message)
-            return None
-
+            engine_path = self.settings.value("engine/path", "", str)
+            if not engine_path:
+                # Show settings dialog if no engine path is set
+                QMessageBox.information(self, "Engine Setup Required", 
+                                    "No chess engine found. Please select one in Settings.")
+                dialog = SettingsDialog(self)
+                if dialog.exec() == QDialog.Accepted:
+                    # Try to get the newly set engine path
+                    engine_path = self.settings.value("engine/path", "", str)
+                    if not engine_path:
+                        return None
+                else:
+                    return None
+                    
+            transport = chess.engine.SimpleEngine.popen_uci(engine_path)
+            # Configure engine settings
+            transport.configure({
+                "Threads": self.settings.value("engine/threads", 4, int),
+                "Hash": self.settings.value("engine/memory", 16, int)
+            })
+            return transport
         except Exception as e:
-            show_error(f"Error initializing Stockfish: {str(e)}")
+            QMessageBox.critical(self, "Engine Error", 
+                            f"Failed to initialize engine: {str(e)}")
             return None
 
     def keyPressEvent(self, event):
@@ -178,7 +157,7 @@ class BoardMaster(QMainWindow):
         pgn_string = self.pgn_text.toPlainText()
         self.new_tab = GameTab(self)
         if self.new_tab.load_pgn(pgn_string):
-            self.tab_widget.addTab(self.new_tab, f"Game {self.tab_widget.count() + 1}")
+            self.tab_widget.addTab(self.new_tab, f"{self.new_tab.hdrs.get("White")}_{self.new_tab.hdrs.get("Black")}_{self.new_tab.hdrs.get("Date").replace(".", "_")}")
             self.tab_widget.setCurrentWidget(self.new_tab)
 
     def analyze_position(self, board):
