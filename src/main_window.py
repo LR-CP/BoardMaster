@@ -12,6 +12,8 @@ from interactive_board import BoardEditor
 from gametab import GameTab
 from dialogs import *
 
+# TODO: Add export PGN functionality
+
 class BoardMaster(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -100,6 +102,11 @@ class BoardMaster(QMainWindow):
         split_pgn_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
         split_pgn_action.triggered.connect(self.show_pgn_splitter)
         tool_menu.addAction(split_pgn_action)
+        # Add PGN Export action
+        export_pgn_action = QAction("Export PGN", self)
+        export_pgn_action.setShortcut(QKeySequence("Ctrl+Shift+E"))
+        export_pgn_action.triggered.connect(self.export_pgn)
+        tool_menu.addAction(export_pgn_action)
 
         settings_menu = menubar.addMenu("&Settings")
         open_settings = QAction("Engine Settings", self)
@@ -155,6 +162,15 @@ class BoardMaster(QMainWindow):
     def show_pgn_splitter(self):
         splitter = PGNSplitterDialog(self)
         splitter.exec()
+    
+    def export_pgn(self):
+        pgn_str, fname = self.new_tab.export_pgn()
+        file_name, _ = QFileDialog.getSaveFileName(
+            self, "Save PGN File", fname, "PGN files (*.pgn)"
+        )
+        if file_name:
+            with open(file_name, "w") as f:
+                f.write(pgn_str)
 
     def open_help(self):
         help_dialog = HelpDialog(self)

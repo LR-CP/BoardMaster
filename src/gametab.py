@@ -660,6 +660,38 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             self.current_board.push(self.moves[self.current_move_index])
             self.current_move_index += 1
             self.update_display()
+    
+    def export_pgn(self):
+        """Export the current game as PGN format."""
+        # Create a new game from the current position
+        game = chess.pgn.Game()
+        
+        # Add headers if they exist
+        if hasattr(self, 'hdrs') and self.hdrs:
+            for key, value in self.hdrs.items():
+                game.headers[key] = value
+        
+        # Create the move list
+        node = game
+        for move in self.moves:
+            node = node.add_main_variation(move)
+            
+        # # Add variations if they exist
+        # for move_index, variations in self.variations.items():
+        #     if move_index >= self.current_move_index:
+        #         continue
+        #     parent_node = game
+        #     # Navigate to the correct node
+        #     for i in range(move_index):
+        #         parent_node = parent_node.variation(0)
+        #     # Add each variation
+        #     for variation in variations:
+        #         var_node = parent_node
+        #         for move in variation:
+        #             var_node = var_node.add_variation(move)
+        
+        # Return the PGN string
+        return str(game), f"{game.headers["White"]}_{game.headers["Black"]}_{game.headers["Date"].replace(".","_")}.pgn"
 
     def prev_move(self):
         if self.current_move_index > 0:
