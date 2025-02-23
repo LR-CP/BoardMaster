@@ -174,6 +174,7 @@ class GameTab(QWidget):
         self.arrow_start = None    # Starting square for the current arrow drawing
         self.current_arrow = None
         self.user_circles = set()  # NEW: Set of squares with circle markers
+        self.show_arrows = True  # Add this after other initializations
 
         self.create_gui()
 
@@ -211,6 +212,13 @@ class GameTab(QWidget):
             btn = QPushButton(text)
             btn.clicked.connect(func)
             nav_layout.addWidget(btn)
+        
+        self.arrow_button = QPushButton("Arrows: ✅")
+        self.arrow_button.clicked.connect(self.arrow_toggle)
+        nav_layout.addWidget(self.arrow_button)
+
+        # self.status_label = QLabel("Analysis Arrows: ON")
+        # nav_layout.addWidget(self.status_label)
         left_layout.addLayout(nav_layout)
 
         self.fen_box = QLineEdit("FEN: ")
@@ -534,11 +542,12 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                     analysis_text += f"{i}. {self.current_board.san(move)} (eval: {score/100:+.2f})\n"
                     # Retain annotation arrows for best moves
                     color = QColor("#00ff00") if i <= 1 else QColor("#007000")
-                    arrows.append(chess.svg.Arrow(
-                        tail=move.from_square,
-                        head=move.to_square,
-                        color=color.name()
-                    ))
+                    if self.show_arrows:
+                        arrows.append(chess.svg.Arrow(
+                            tail=move.from_square,
+                            head=move.to_square,
+                            color=color.name()
+                        ))
                     annotations[move.to_square] = f"{score/100.0:.2f}"
             self.analysis_text.setText(analysis_text)
 
@@ -851,6 +860,14 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         return (board_x <= pos.x() <= board_x + board_size and 
                 board_y <= pos.y() <= board_y + board_size)
 
+    def arrow_toggle(self):
+        # Toggle arrows
+        self.show_arrows = not self.show_arrows
+        if not self.show_arrows:
+            self.arrows = []  # Clear existing arrows
+        self.arrow_button.setText(f"Arrows: {'✅' if self.show_arrows else '❌'}")
+        self.update_display()  # Refresh display
+
     def mousePressEvent(self, event):
         pos = event.localPos()
         
@@ -948,9 +965,9 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         if self.dragging:
             self.drag_current_pos = event.localPos()
             if self.is_live_game is False:
-                y_off = 129
+                y_off = 109
             else:
-                y_off = 129
+                y_off = 109
             self.drag_current_pos = QPointF(self.drag_current_pos.x() - 44, self.drag_current_pos.y() - y_off)
             piece = self.current_board.piece_at(self.drag_start_square)
             if piece:

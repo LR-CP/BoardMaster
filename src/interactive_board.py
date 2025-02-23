@@ -55,9 +55,6 @@ class ChessBoard(QSvgWidget):
         )
         self.load(QByteArray(board_svg.encode("utf-8")))
         self.update()
-        # Always update parent's FEN display
-        if self.parent() and hasattr(self.parent(), 'fen_input'):
-            self.parent().fen_input.setText(self.board.fen())
 
     def flip_board(self):
         """
@@ -107,39 +104,43 @@ class ChessBoard(QSvgWidget):
         """
         @brief Analyze the current board position using the engine.
         """
-        try:
-            result = self.engine.analyse(self.board, chess.engine.Limit(time=self.time), multipv=self.multipv)
-        except Exception as e:
-            print(f"Engine error: {e}")
-            if hasattr(self.parent(), 'engine_path'):
-                try:
-                    self.engine = chess.engine.SimpleEngine.popen_uci(self.parent().engine_path)
-                    result = self.engine.analyse(self.board, chess.engine.Limit(time=self.time), multipv=self.multipv)
-                except Exception as e:
-                    print(f"Failed to restart engine: {e}")
-                    return
-            else:
-                print("No engine path available for restart")
-                return
-
-        # Continue with existing analysis code
-        self.best_moves = [info['pv'][0] for info in result]
         arrows = []
+        self.current_move_index = 1
+        result = self.engine.analyse(self.board, chess.engine.Limit(time=self.time), multipv=self.multipv)
+        self.best_moves = [info['pv'][0] for info in result]
+        # Get the main line evaluation
+        main_eval = result[0]["score"].relative
+        # eval_score = self.eval_to_cp(main_eval) if hasattr(self, 'eval_to_cp') else 0
+        
+        # Update analysis text
+        analysis_text = f"Move {(self.current_move_index + 1) // 2} "
+        analysis_text += f"({'White' if self.current_move_index % 2 == 0 else 'Black'})\n\n"
+        analysis_text += "Top moves:\n"
+        
         for i, pv in enumerate(result, 1):
             move = pv["pv"][0]
-            color = "#00ff00" if i == 1 else "#007000" if i == 2 else "#003000"
+            # score = self.eval_to_cp(pv["score"].relative) if hasattr(self, 'eval_to_cp') else 0
+            # analysis_text += f"{i}. {self.board.san(move)} (eval: {score/100:+.2f})\n"
+            
+            # Add arrows
+            color = "#00ff00" if i == 0 else "#007000" if i == 1 else "#003000"
             arrows.append(chess.svg.Arrow(
                 tail=move.from_square,
                 head=move.to_square,
                 color=color
             ))
+            # annotations[move.to_square] = f"{score / 100.0:.2f}"
         
+        # Generate the base SVG board
         board_svg = chess.svg.board(
             self.board,
             arrows=arrows,
             orientation=self.board_orientation,
         )
-        self.load(QByteArray(board_svg.encode("utf-8")))
+
+        self.load(QByteArray(board_svg._repr_svg_().encode("utf-8")))
+
+        # self.update_board()
 
     def map_position_to_square(self, pos):
         """
@@ -164,12 +165,6 @@ class ChessBoard(QSvgWidget):
         pos = event.position()  # localPos()
         file_idx, rank_idx = self.map_position_to_square(pos)
         square = chess.square(file_idx, rank_idx)
-        
-        # NEW: If in edit mode, show the piece dropdown and exit.
-        if self.edit_mode:
-            self.show_piece_menu(event.globalPos(), square)
-            return
-
         piece = self.board.piece_at(square)
         if event.button() == Qt.LeftButton and piece is not None:
             # NEW: Add highlight moves
@@ -217,17 +212,17 @@ class ChessBoard(QSvgWidget):
             file_idx, rank_idx = self.map_position_to_square(pos)
             drop_square = chess.square(file_idx, rank_idx)
             
+            # NEW: Adjust the move calculation based on board orientation
             move = chess.Move(self.drag_start_square, drop_square)
             
             if move in self.board.legal_moves:
                 self.board.push(move)
-                self.move_stack.append(self.board.fen())  # Save state for undo
             self.dragging = False
             self.drag_start_square = None
             self.drag_current_pos = None
             self.drag_offset = None
-            self.highlight_moves = []
-            self.update_board()  # This will update the FEN display
+            self.highlight_moves = []  # NEW: Clear highlights
+            self.update_board()  # re-render board
         else:
             super().mouseReleaseEvent(event)
 
@@ -332,21 +327,8 @@ class ChessBoard(QSvgWidget):
             temp_painter.end()
         return pixmap.scaled(self.square_size, self.square_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
 
-    def rebuild_board_state(self):
-        """Rebuild the board state and prepare for analysis"""
-        self.best_moves = []
-        self.selected_square = None
-        self.legal_moves = []
-        self.highlight_moves = []
-        self.update_board()
-
-    def set_turn(self, color):
-        """Set whose turn it is to move"""
-        self.board.turn = color
-        self.update_board()
-
 class BoardEditor(QMainWindow):
-    def __init__(self, engine : chess.engine = None, fen=None, threads=4, multipv=3, mem=128, time=0.1, depth=50):
+    def __init__(self, engine : chess.engine = None, fen=None, threads=None, multipv=None, mem=None, time=None, depth=None):
         """
         @brief Initialize the board editor window.
         @param engine The chess engine instance.
@@ -363,13 +345,7 @@ class BoardEditor(QMainWindow):
         self.setFixedSize(600, 700)
 
         self.fen = fen
-        self.fen_input = QLineEdit()
-        self.fen_input.setPlaceholderText("Enter FEN")
 
-        # NEW: If engine is a string, launch it as a UCI engine.
-        self.engine_path = engine if isinstance(engine, str) else "./stockfish/stockfish.exe"
-        if isinstance(engine, str):
-            engine = chess.engine.SimpleEngine.popen_uci(engine)
         self.board_widget = ChessBoard(engine=engine, threads=threads, multipv=multipv, mem=mem, time=time, depth=depth, parent=self)
 
         self.status_label = QLabel("Edit Mode: OFF")
@@ -390,20 +366,12 @@ class BoardEditor(QMainWindow):
         self.flip_button = QPushButton("Flip Board")
         self.flip_button.clicked.connect(self.board_widget.flip_board)
 
-        # NEW: Add turn selector button
-        self.turn_button = QPushButton("White to Move")
-        self.turn_button.clicked.connect(self.toggle_turn)
-        self.turn_button.setEnabled(False)  # Only enabled in edit mode
-
         self.fen_input = QLineEdit()
         self.fen_input.setPlaceholderText("Enter FEN")
         if self.fen:
             self.fen_input.setText(self.fen)
             self.set_fen_position()
         self.fen_input.returnPressed.connect(self.set_fen_position)
-
-        self.refresh_button = QPushButton("Refresh Board")
-        self.refresh_button.clicked.connect(self.refresh_board)
 
         layout = QVBoxLayout()
         layout.addWidget(self.board_widget)
@@ -415,11 +383,9 @@ class BoardEditor(QMainWindow):
         button_layout.addWidget(self.undo_button)
         button_layout.addWidget(self.analyze_button)
         button_layout.addWidget(self.flip_button)
-        button_layout.addWidget(self.turn_button)  # Add turn button to layout
 
         layout.addLayout(button_layout)
         layout.addWidget(self.fen_input)
-        layout.addWidget(self.refresh_button)  # Add refresh button at bottom
 
         container = QWidget()
         container.setLayout(layout)
@@ -429,21 +395,9 @@ class BoardEditor(QMainWindow):
         """
         @brief Toggle the board edit mode on/off.
         """
-        self.refresh_board()
         self.board_widget.edit_mode = not self.board_widget.edit_mode
         status = "ON" if self.board_widget.edit_mode else "OFF"
         self.status_label.setText(f"Edit Mode: {status}")
-        # Enable/disable turn button based on edit mode
-        self.turn_button.setEnabled(self.board_widget.edit_mode)
-        if not self.board_widget.edit_mode:
-            self.board_widget.update_board()
-
-    def toggle_turn(self):
-        """Toggle between White and Black to move"""
-        self.board_widget.board.turn = not self.board_widget.board.turn
-        button_text = "Black to Move" if self.board_widget.board.turn else "White to Move"
-        self.board_widget.update_board()
-        self.turn_button.setText(button_text)
 
     def clear_board(self):
         """
@@ -459,19 +413,6 @@ class BoardEditor(QMainWindow):
         """
         fen = self.fen_input.text()
         self.board_widget.set_fen(fen)
-
-    def update_fen(self, fen):
-        """Update FEN string in the input box"""
-        self.fen_input.setText(fen)
-
-    def refresh_board(self):
-        """Refresh the board state and prepare for new operations"""
-        # self.board_widget.rebuild_board_state()
-        self.board_widget.board.set_fen(self.board_widget.board.fen())
-        self.board_widget.update()
-        self.board_widget.update_board()
-        self.update_fen(self.board_widget.board.fen())
-        self.status_label.setText("Board Refreshed")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

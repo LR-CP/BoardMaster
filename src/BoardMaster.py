@@ -1,7 +1,6 @@
 """
-Chess Game Analyzer
-Requires: python-chess, PySide6, Stockfish engine installed
-Save as chess_analyzer.py and run with: python chess_analyzer.py
+BoardMaster
+A free chess analysis tool
 """
 
 import sys

@@ -13,7 +13,7 @@ class EvaluationGraphPG(QWidget):
         """
         super().__init__(parent)
         self.game_tab = game_tab
-        self.plot_widget = pg.PlotWidget(title="Game Evaluation")
+        self.plot_widget = pg.PlotWidget()
         # Set size policy to allow resizing and a default smaller minimum size
         self.plot_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.plot_widget.setMinimumHeight(100)
@@ -23,7 +23,10 @@ class EvaluationGraphPG(QWidget):
         self.plot_widget.showGrid(x=True, y=True)
         self.plot_widget.setLabel('left', "Evaluation (centipawns)")
         self.plot_widget.setLabel('bottom', "Move Number")
-        # Set x-axis tick spacing to 1
+        # Add and show the legend
+        self.plot_widget.addLegend(offset=(10, 7))
+        self.plot_widget.plotItem.legend.setVisible(True)
+        # Set x-axis tick spacing to 1  
         x_axis = self.plot_widget.getAxis('bottom')
         x_axis.setTicks([[(i, str(i)) for i in range(0, 101, 1)]])
         
