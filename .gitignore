@@ -13,3 +13,5 @@ stockfish.exe
 __pycache__/
 engine_test.py
 web/
+docs/html/
+docs/latex/

@@ -8,6 +8,10 @@ import io
 
 class HelpDialog(QDialog):
     def __init__(self, parent=None):
+        """
+        @brief Construct a help dialog for BoardMaster.
+        @param parent Parent widget.
+        """
         super().__init__(parent)
         self.setWindowTitle("BoardMaster Help")
         self.setWindowIcon(QIcon("./img/king.ico"))
@@ -53,6 +57,10 @@ class HelpDialog(QDialog):
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
+        """
+        @brief Initialize the settings dialog.
+        @param parent Parent widget.
+        """
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setWindowIcon(QIcon("./img/king.ico"))
@@ -133,6 +141,9 @@ class SettingsDialog(QDialog):
         layout.addWidget(save_button)
 
     def browse_engine(self):
+        """
+        @brief Open a file dialog to select a chess engine executable.
+        """
         file_name, _ = QFileDialog.getOpenFileName(
             self,
             "Select Chess Engine",
@@ -143,6 +154,9 @@ class SettingsDialog(QDialog):
             self.engine_path.setText(file_name)
     
     def browse_game_dir(self):
+        """
+        @brief Open a directory chooser to select the game folder.
+        """
         file_name = QFileDialog.getExistingDirectory(
             self,
             "Select Game Folder",
@@ -152,6 +166,9 @@ class SettingsDialog(QDialog):
             self.games_dir.setText(file_name)
     
     def save_settings(self):
+        """
+        @brief Save all settings to persistent storage.
+        """
         self.settings.setValue("engine/depth", self.depth_spin.value())
         self.settings.setValue("display/show_arrows", self.show_arrows.isChecked())
         self.settings.setValue("engine/lines", self.arrows_spin.value())
@@ -166,6 +183,10 @@ class SettingsDialog(QDialog):
 
 class PGNSplitterDialog(QDialog):
     def __init__(self, parent=None):
+        """
+        @brief Initialize the PGN splitter dialog.
+        @param parent Parent widget.
+        """
         super().__init__(parent)
         self.setWindowTitle("PGN Splitter")
         self.setMinimumSize(600, 400)
@@ -197,6 +218,9 @@ class PGNSplitterDialog(QDialog):
         layout.addLayout(btn_layout)
     
     def load_pgn_file(self):
+        """
+        @brief Load PGN text from a file into the dialog.
+        """
         file_name, _ = QFileDialog.getOpenFileName(
             self, "Open PGN File", "", "PGN files (*.pgn);;All files (*.*)"
         )
@@ -205,6 +229,9 @@ class PGNSplitterDialog(QDialog):
                 self.pgn_text.setText(f.read())
     
     def split_pgn(self):
+        """
+        @brief Split the loaded PGN text into individual games and save them.
+        """
         pgn_content = self.pgn_text.toPlainText()
         if not pgn_content.strip():
             return

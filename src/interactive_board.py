@@ -9,6 +9,16 @@ from PySide6.QtGui import QPainter, QIcon, QColor, QAction, QPen, QPixmap
 
 class ChessBoard(QSvgWidget):
     def __init__(self, engine : chess.engine = None, threads=None, multipv=None, mem=None, time=None, depth=None, parent=None):
+        """
+        @brief Initialize the chess board widget.
+        @param engine The chess engine instance.
+        @param threads Number of threads.
+        @param multipv Number of analysis lines.
+        @param mem Memory allocation for engine.
+        @param time Time for analysis.
+        @param depth Depth for analysis.
+        @param parent Parent widget.
+        """
         super().__init__(parent)
         self.board = chess.Board()  # Default starting position
         self.threads = threads
@@ -35,6 +45,9 @@ class ChessBoard(QSvgWidget):
         self.update_board()
 
     def update_board(self):
+        """
+        @brief Render and update the board display.
+        """
         board_svg = chess.svg.board(
             self.board,
             size=self.board_size,
@@ -44,10 +57,18 @@ class ChessBoard(QSvgWidget):
         self.update()
 
     def flip_board(self):
+        """
+        @brief Flip the board orientation.
+        """
         self.board_orientation = chess.BLACK if self.board_orientation == chess.WHITE else chess.WHITE
         self.update_board()
 
     def set_piece(self, square, piece_symbol):
+        """
+        @brief Set or remove a piece on the board.
+        @param square The target square.
+        @param piece_symbol The piece symbol; empty string removes the piece.
+        """
         self.move_stack.append(self.board.fen())
         if piece_symbol == '':
             self.board.remove_piece_at(square)
@@ -58,6 +79,10 @@ class ChessBoard(QSvgWidget):
         self.update_board()
 
     def set_fen(self, fen):
+        """
+        @brief Set the board from a FEN string.
+        @param fen The FEN string.
+        """
         try:
             self.board.set_fen(fen)
             self.best_moves = []
@@ -66,6 +91,9 @@ class ChessBoard(QSvgWidget):
             self.parent().status_label.setText("Invalid FEN")
 
     def undo_move(self):
+        """
+        @brief Undo the last move.
+        """
         if self.move_stack:
             fen = self.move_stack.pop()
             self.board.set_fen(fen)
@@ -73,6 +101,9 @@ class ChessBoard(QSvgWidget):
             self.update_board()
 
     def analyze_position(self):
+        """
+        @brief Analyze the current board position using the engine.
+        """
         arrows = []
         self.current_move_index = 1
         result = self.engine.analyse(self.board, chess.engine.Limit(time=self.time), multipv=self.multipv)
@@ -111,8 +142,12 @@ class ChessBoard(QSvgWidget):
 
         # self.update_board()
 
-    # NEW: Helper method to map a display position to board square indexes.
     def map_position_to_square(self, pos):
+        """
+        @brief Map a widget coordinate to a board square index.
+        @param pos QPointF representing the position.
+        @return Tuple (file_idx, rank_idx).
+        """
         # pos is a QPointF in widget coordinates.
         if self.board_orientation == chess.WHITE:
             file_idx = int(pos.x() // self.square_size)
@@ -122,8 +157,11 @@ class ChessBoard(QSvgWidget):
             rank_idx = int(pos.y() // self.square_size)
         return file_idx, rank_idx
 
-    # Update mousePressEvent to use the mapping.
     def mousePressEvent(self, event):
+        """
+        @brief Handle the mouse press event for drag and selection.
+        @param event The mouse event.
+        """
         pos = event.position()  # localPos()
         file_idx, rank_idx = self.map_position_to_square(pos)
         square = chess.square(file_idx, rank_idx)
@@ -154,6 +192,10 @@ class ChessBoard(QSvgWidget):
         self.update()
 
     def mouseMoveEvent(self, event):
+        """
+        @brief Handle the mouse move event for drag operations.
+        @param event The mouse event.
+        """
         if self.dragging:
             self.drag_current_pos = event.position()
             self.update()
@@ -161,6 +203,10 @@ class ChessBoard(QSvgWidget):
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        """
+        @brief Finalize the move on mouse release.
+        @param event The mouse event.
+        """
         if self.dragging:
             pos = event.position()
             file_idx, rank_idx = self.map_position_to_square(pos)
@@ -181,6 +227,11 @@ class ChessBoard(QSvgWidget):
             super().mouseReleaseEvent(event)
 
     def show_piece_menu(self, pos, square):
+        """
+        @brief Show a popup menu to set or remove a piece.
+        @param pos The position where the menu is shown.
+        @param square The board square.
+        """
         menu = QMenu(self)
         pieces = {'Empty': '', 'White Pawn': 'P', 'White Knight': 'N', 'White Bishop': 'B', 'White Rook': 'R', 'White Queen': 'Q', 'White King': 'K', 'Black Pawn': 'p', 'Black Knight': 'n', 'Black Bishop': 'b', 'Black Rook': 'r', 'Black Queen': 'q', 'Black King': 'k'}
 
@@ -192,6 +243,10 @@ class ChessBoard(QSvgWidget):
         menu.exec(pos)
 
     def paintEvent(self, event):
+        """
+        @brief Overridden paint event to draw overlays and drag images.
+        @param event The paint event.
+        """
         super().paintEvent(event)
         painter = QPainter(self)
         
@@ -253,6 +308,11 @@ class ChessBoard(QSvgWidget):
         painter.end()
 
     def get_piece_pixmap(self, piece):
+        """
+        @brief Get the image pixmap for a chess piece.
+        @param piece The chess piece.
+        @return A QPixmap of the piece.
+        """
         prefix = "w" if piece.color == chess.WHITE else "b"
         letter = piece.symbol().upper()
         path = f"c:/Users/LPC/Documents/Programs/BoardMaster/piece_images/{prefix.lower()}{letter.lower()}.png"
@@ -269,6 +329,16 @@ class ChessBoard(QSvgWidget):
 
 class BoardEditor(QMainWindow):
     def __init__(self, engine : chess.engine = None, fen=None, threads=None, multipv=None, mem=None, time=None, depth=None):
+        """
+        @brief Initialize the board editor window.
+        @param engine The chess engine instance.
+        @param fen Initial board FEN, if any.
+        @param threads Number of threads.
+        @param multipv Number of analysis lines.
+        @param mem Memory allocation for engine.
+        @param time Time for analysis.
+        @param depth Analysis depth.
+        """
         super().__init__()
         self.setWindowTitle("Chess Board Editor")
         self.setWindowIcon(QIcon("./img/king.ico"))
@@ -322,16 +392,25 @@ class BoardEditor(QMainWindow):
         self.setCentralWidget(container)
 
     def toggle_edit_mode(self):
+        """
+        @brief Toggle the board edit mode on/off.
+        """
         self.board_widget.edit_mode = not self.board_widget.edit_mode
         status = "ON" if self.board_widget.edit_mode else "OFF"
         self.status_label.setText(f"Edit Mode: {status}")
 
     def clear_board(self):
+        """
+        @brief Clear the entire board.
+        """
         self.board_widget.board.clear()
         self.board_widget.best_moves = []
         self.board_widget.update_board()
 
     def set_fen_position(self):
+        """
+        @brief Set the board position from a FEN string input.
+        """
         fen = self.fen_input.text()
         self.board_widget.set_fen(fen)
 

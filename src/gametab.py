@@ -12,6 +12,10 @@ from utils import MoveRow, EvaluationGraphPG
 
 class CustomSVGWidget(QSvgWidget):
     def __init__(self, parent=None):
+        """
+        @brief Initialize the custom SVG widget for board overlays.
+        @param parent Parent widget.
+        """
         super().__init__(parent)
         self.squares = {}  # {square: QColor, ...}
         self.square_size = 70
@@ -21,6 +25,10 @@ class CustomSVGWidget(QSvgWidget):
         self.flipped = False
 
     def paintEvent(self, event):
+        """
+        @brief Overridden paint event to draw highlights, drag images and evaluation symbols.
+        @param event The paint event.
+        """
         super().paintEvent(event)
         painter = QPainter(self)
         board_size = 8 * self.square_size
@@ -80,6 +88,10 @@ class CustomSVGWidget(QSvgWidget):
 
 class GameTab(QWidget):
     def __init__(self, parent=None):
+        """
+        @brief Initialize a game analysis tab.
+        @param parent Parent widget (typically the main window).
+        """
         super().__init__(parent)
         self.engine = parent.engine
         self.settings = QSettings("BoardMaster", "BoardMaster")
@@ -108,6 +120,9 @@ class GameTab(QWidget):
         self.create_gui()
 
     def create_gui(self):
+        """
+        @brief Create and arrange the GUI elements for the game tab.
+        """
         layout = QHBoxLayout(self)
 
         # Left panel
@@ -188,6 +203,13 @@ class GameTab(QWidget):
         self.board_display.mousePressEvent = self.mousePressEvent
 
     def show_loading(self, title="Loading...", text="Analyzing game...", max=0):
+        """
+        @brief Show a loading dialog for long-running analysis.
+        @param title Title for the dialog.
+        @param text Message text.
+        @param max Maximum progress value.
+        @return The progress dialog.
+        """
         self.progress = QProgressDialog(
             labelText=text, cancelButtonText=None, minimum=0, maximum=max, parent=self
         )
@@ -204,6 +226,11 @@ class GameTab(QWidget):
         return self.progress
 
     def load_pgn(self, pgn_string):
+        """
+        @brief Load a PGN game from a provided PGN string.
+        @param pgn_string The PGN text.
+        @return True if loaded successfully; otherwise False.
+        """
         self.is_live_game = False
         self.current_variation = None
         self.variations = {}
@@ -239,6 +266,9 @@ class GameTab(QWidget):
             return False
 
     def analyze_all_moves(self):
+        """
+        @brief Analyze all moves of the loaded game to calculate evaluations and accuracies.
+        """
         temp_board = chess.Board()
         self.move_evaluations = []
         self.accuracies = {"white": [], "black": []}
@@ -344,6 +374,9 @@ class GameTab(QWidget):
         )
 
     def update_game_summary(self):
+        """
+        @brief Update the game summary based on move evaluations.
+        """
         white_excellent = sum(
             1
             for i, eval in enumerate(self.move_evaluations)
@@ -402,6 +435,11 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         self.summary_label.setText(summary)
 
     def eval_to_cp(self, eval_score):
+        """
+        @brief Convert an evaluation object to centipawns.
+        @param eval_score The evaluation score object.
+        @return The centipawn value.
+        """
         """Convert evaluation to centipawns, handles Mate cases."""
         if eval_score.is_mate():
             # Convert mate scores to high centipawn values
@@ -412,6 +450,9 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         return eval_score.score()
 
     def update_display(self):
+        """
+        @brief Update the board display, move list and evaluation graph.
+        """
         arrows = []
         annotations = {}
         eval_score = 0  # Default value
@@ -602,6 +643,9 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         # self.analyze_position() # Remove this for pre analysis (keep for move based analysis)
 
     def analyze_position(self):
+        """
+        @brief Analyze the current board position and update analysis text.
+        """
         if not self.current_board.is_game_over():
             info = self.engine.analyse(
                 self.current_board,
@@ -631,6 +675,10 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             self.analysis_text.setText(analysis_text)
 
     def move_selected(self, item):
+        """
+        @brief Handle selection of a move from the move list.
+        @param item The selected QListWidgetItem.
+        """
         # Get the stored move indices
         move_indices = item.data(Qt.ItemDataRole.UserRole)
         
@@ -649,6 +697,10 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 self.goto_move(white_index)
 
     def goto_move(self, index):
+        """
+        @brief Jump to the specified move index in the game.
+        @param index The move index.
+        """
         self.current_board = chess.Board()
         for i in range(index + 1):
             self.current_board.push(self.moves[i])
@@ -656,6 +708,9 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         self.update_display()
 
     def next_move(self):
+        """
+        @brief Advance the game by one move.
+        """
         if self.current_move_index < len(self.moves):
             self.current_board.push(self.moves[self.current_move_index])
             self.current_move_index += 1
@@ -680,26 +735,42 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         return str(game), f"{game.headers["White"]}_{game.headers["Black"]}_{game.headers["Date"].replace(".","_")}.pgn"
 
     def prev_move(self):
+        """
+        @brief Go back one move.
+        """
         if self.current_move_index > 0:
             self.current_move_index -= 1
             self.current_board.pop()
             self.update_display()
 
     def first_move(self):
+        """
+        @brief Jump to the first move of the game.
+        """
         while self.current_move_index > 0:
             self.prev_move()
 
     def last_move(self):
+        """
+        @brief Jump to the last move of the game.
+        """
         while self.current_move_index < len(self.moves):
             self.next_move()
 
     def board_flip(self):
+        """
+        @brief Flip the board display orientation.
+        """
         self.flipped = not self.flipped
         self.board_display.flipped = self.flipped
         self.board_orientation = not getattr(self, "board_orientation", False)
         self.update_display()
 
     def keyPressEvent(self, event):
+        """
+        @brief Process key press events for move navigation.
+        @param event The key press event.
+        """
         if event.key() == Qt.Key_Left:
             self.prev_move()
         elif event.key() == Qt.Key_Right:
@@ -708,6 +779,11 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             super().keyPressEvent(event)
         
     def is_within_board(self, pos):
+        """
+        @brief Check if a given position is within the board boundaries.
+        @param pos The QPoint position.
+        @return True if within boundaries, else False.
+        """
         """Check if position is within chess board boundaries"""
         board_size = 8 * self.square_size
         global_offset = (self.board_display.width() - board_size) / 2
@@ -717,6 +793,10 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 board_y <= pos.y() <= board_y + board_size)
 
     def mousePressEvent(self, event):
+        """
+        @brief Handle mouse press events for move interactions.
+        @param event The mouse press event.
+        """
         pos = event.localPos()  # use localPos for consistency
 
         if not self.is_within_board(pos):
@@ -763,6 +843,10 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         self.board_display.repaint()
 
     def mouseMoveEvent(self, event):
+        """
+        @brief Handle mouse move events during dragging.
+        @param event The mouse move event.
+        """
         # if not self.is_within_board(event.localPos()):
             # return super().mouseMoveEvent(event)
         if self.dragging:
@@ -786,6 +870,10 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        """
+        @brief Handle mouse release events to finalize a move.
+        @param event The mouse release event.
+        """
         # if not self.is_within_board(event.localPos()):
             # return super().mouseMoveEvent(event)
         if self.dragging:
@@ -829,8 +917,13 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         else:
             super().mouseReleaseEvent(event)
 
-    # NEW: Updated helper to load piece image with fallback if not found
     def get_piece_pixmap(self, piece):
+        """
+        @brief Retrieve the QPixmap for a given chess piece.
+        @param piece The chess piece.
+        @return Scaled QPixmap of the chess piece.
+        """
+        # NEW: Updated helper to load piece image with fallback if not found
         prefix = "w" if piece.color == chess.WHITE else "b"
         letter = piece.symbol().upper()
         path = f"c:/Users/LPC/Documents/Programs/BoardMaster/piece_images/{prefix.lower()}{letter.lower()}.png"

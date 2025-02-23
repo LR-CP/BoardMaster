@@ -12,14 +12,16 @@ from interactive_board import BoardEditor
 from gametab import GameTab
 from dialogs import *
 
-# TODO: Add export PGN functionality
-
 class BoardMaster(QMainWindow):
     def __init__(self):
+        """
+        @brief Initialize the main window for BoardMaster.
+        @details Sets window size, title, engine and loads the GUI.
+        """
         super().__init__()
         self.setWindowTitle("BoardMaster")
-        self.setGeometry(100, 100, 1600, 900)
-        self.setFixedSize(1600, 900)
+        self.setGeometry(100, 100, 1600, 1000)
+        self.setFixedSize(1600, 1000)
         self.setWindowIcon(QIcon("./img/king.ico"))
 
         self.settings = QSettings("BoardMaster", "BoardMaster")
@@ -32,6 +34,9 @@ class BoardMaster(QMainWindow):
         self.create_menus()
 
     def create_gui(self):
+        """
+        @brief Create the main layout and widgets of the GUI.
+        """
         # Create main layout
         main_layout = QHBoxLayout()
         
@@ -84,6 +89,9 @@ class BoardMaster(QMainWindow):
         # self.addDockWidget(Qt.BottomDockWidgetArea, self.eval_dock)
 
     def create_menus(self):
+        """
+        @brief Create the menu bar and add menu items.
+        """
         menubar = self.menuBar()
 
         file_menu = menubar.addMenu("&File")
@@ -121,6 +129,10 @@ class BoardMaster(QMainWindow):
         help_menu.addAction(open_help)
 
     def initialize_engine(self):
+        """
+        @brief Initialize and configure the chess engine.
+        @return Engine transport instance or None on failure.
+        """
         try:
             engine_path = self.settings.value("engine/path", "", str)
             if not engine_path:
@@ -149,6 +161,10 @@ class BoardMaster(QMainWindow):
             return None
 
     def keyPressEvent(self, event):
+        """
+        @brief Handle key press events.
+        @param event The key press event.
+        """
         current_tab = self.tab_widget.currentWidget()
         if isinstance(current_tab, GameTab):
             current_tab.keyPressEvent(event)
@@ -156,14 +172,23 @@ class BoardMaster(QMainWindow):
             super().keyPressEvent(event)
 
     def open_settings(self):
+        """
+        @brief Open the engine settings dialog.
+        """
         dialog = SettingsDialog(self)
         dialog.exec()
     
     def show_pgn_splitter(self):
+        """
+        @brief Open the PGN splitter dialog.
+        """
         splitter = PGNSplitterDialog(self)
         splitter.exec()
     
     def export_pgn(self):
+        """
+        @brief Export the current game to a PGN file.
+        """
         pgn_str, fname = self.new_tab.export_pgn()
         file_name, _ = QFileDialog.getSaveFileName(
             self, "Save PGN File", fname, "PGN files (*.pgn)"
@@ -173,10 +198,16 @@ class BoardMaster(QMainWindow):
                 f.write(pgn_str)
 
     def open_help(self):
+        """
+        @brief Open the help dialog.
+        """
         help_dialog = HelpDialog(self)
         help_dialog.exec()
 
     def open_pgn_file(self):
+        """
+        @brief Open a PGN file and load its content.
+        """
         file_name, _ = QFileDialog.getOpenFileName(
             self, "Open PGN File", self.settings.value("game_dir", "", str), "PGN files (*.pgn)"
         )
@@ -186,6 +217,9 @@ class BoardMaster(QMainWindow):
             self.load_game()
 
     def open_interactive_board(self):
+        """
+        @brief Open the interactive board with current position.
+        """
         if self.new_tab:
             fen=self.new_tab.current_board.fen()
         else:
@@ -201,6 +235,9 @@ class BoardMaster(QMainWindow):
         self.interactive_board.show()
 
     def load_game(self):
+        """
+        @brief Load a game from the PGN text input.
+        """
         pgn_string = self.pgn_text.toPlainText()
         self.new_tab = GameTab(self)
         if self.new_tab.load_pgn(pgn_string):
@@ -208,10 +245,18 @@ class BoardMaster(QMainWindow):
             self.tab_widget.setCurrentWidget(self.new_tab)
 
     def analyze_position(self, board):
+        """
+        @brief Analyze a given board position.
+        @param board The chess board to analyze.
+        """
         depth = self.settings.value("engine/depth", 20, int)
         self.engine.analyse(board, chess.engine.Limit(depth=depth))
 
     def closeEvent(self, event):
+        """
+        @brief Cleanup when closing the application.
+        @param event The close event.
+        """
         if hasattr(self, "engine") and self.engine:
             self.engine.quit()
         super().closeEvent(event)
