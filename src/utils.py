@@ -65,7 +65,6 @@ class EvaluationGraphPG(QWidget):
             vb = self.plot_widget.plotItem.vb
             mousePoint = vb.mapSceneToView(pos)
             move_index = int(mousePoint.x()+1)
-            print(move_index)
             if self.game_tab is not None:
                 self.game_tab.goto_move(move_index*2-1)
 

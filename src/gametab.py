@@ -470,17 +470,18 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             analysis_text += f"({'White' if self.current_move_index % 2 == 0 else 'Black'})\n\n"
             analysis_text += "Top moves:\n"
             for i, pv in enumerate(info, 1):
-                move = pv["pv"][0]
-                score = self.eval_to_cp(pv["score"].relative) if hasattr(self, 'eval_to_cp') else 0
-                analysis_text += f"{i}. {self.current_board.san(move)} (eval: {score/100:+.2f})\n"
-                # Retain annotation arrows for best moves
-                color = QColor("#00ff00") if i <= 1 else QColor("#007000")
-                arrows.append(chess.svg.Arrow(
-                    tail=move.from_square,
-                    head=move.to_square,
-                    color=color.name()
-                ))
-                annotations[move.to_square] = f"{score/100.0:.2f}"
+                if "pv" in pv.keys():
+                    move = pv["pv"][0]
+                    score = self.eval_to_cp(pv["score"].relative) if hasattr(self, 'eval_to_cp') else 0
+                    analysis_text += f"{i}. {self.current_board.san(move)} (eval: {score/100:+.2f})\n"
+                    # Retain annotation arrows for best moves
+                    color = QColor("#00ff00") if i <= 1 else QColor("#007000")
+                    arrows.append(chess.svg.Arrow(
+                        tail=move.from_square,
+                        head=move.to_square,
+                        color=color.name()
+                    ))
+                    annotations[move.to_square] = f"{score/100.0:.2f}"
             self.analysis_text.setText(analysis_text)
 
         if self.current_move_index > 0 and hasattr(self, 'move_evaluations_scores'):

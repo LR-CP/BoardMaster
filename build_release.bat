@@ -13,14 +13,14 @@ if "%~1" == "" (
     goto :eof
 )
 
-if "%~1" == "quick" (
+if "%~1" == "full" (
     cls
     echo Building using Nuitka
     venv\Scripts\python.exe -m nuitka --standalone --onefile --lto=yes --remove-output --windows-console-mode=disable --plugin-enable=pyside6 --windows-icon-from-ico=.\img\king.ico src/BoardMaster.py
     @REM --include-data-files=./stockfish/stockfish.exe=stockfish.exe
     goto :build_complete
 )
-if "%~1" == "full" (
+if "%~1" == "quick" (
     cls
     echo Building using Nuitka
     venv\Scripts\python.exe -m nuitka --standalone --onefile --windows-console-mode=disable --plugin-enable=pyside6 --windows-icon-from-ico=.\img\king.ico src/BoardMaster.py

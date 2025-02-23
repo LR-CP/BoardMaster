@@ -2,8 +2,7 @@ import chess
 import chess.pgn
 import chess.engine
 import chess.svg
-import pkg_resources
-import tempfile
+import subprocess
 from PySide6.QtWidgets import *
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QAction, QIcon, QKeySequence
@@ -148,7 +147,7 @@ class BoardMaster(QMainWindow):
                 else:
                     return None
                     
-            transport = chess.engine.SimpleEngine.popen_uci(engine_path)
+            transport = chess.engine.SimpleEngine.popen_uci(engine_path, creationflags=subprocess.CREATE_NO_WINDOW)
             # Configure engine settings
             transport.configure({
                 "Threads": self.settings.value("engine/threads", 4, int),
@@ -259,4 +258,5 @@ class BoardMaster(QMainWindow):
         """
         if hasattr(self, "engine") and self.engine:
             self.engine.quit()
+            print("Engine stopped.")
         super().closeEvent(event)
