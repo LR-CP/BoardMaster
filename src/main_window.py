@@ -43,7 +43,8 @@ class BoardMaster(QMainWindow):
         self.tab_widget = QTabWidget(tabsClosable=True)
         self.tab_widget.tabCloseRequested.connect(self.tab_widget.removeTab)
         self.new_tab = GameTab(self)
-        self.tab_widget.addTab(self.new_tab, "Live Game")
+        self.lg_ctr = 1
+        self.tab_widget.addTab(self.new_tab, f"Live Game {self.lg_ctr}")
         main_layout.addWidget(self.tab_widget)
 
         # Right side with PGN input
@@ -98,6 +99,10 @@ class BoardMaster(QMainWindow):
         open_pgn.setShortcut(QKeySequence("Ctrl+O"))
         open_pgn.triggered.connect(self.open_pgn_file)
         file_menu.addAction(open_pgn)
+        live_game_tab = QAction("Open Live Game", self)
+        live_game_tab.setShortcut(QKeySequence("Ctrl+L"))
+        live_game_tab.triggered.connect(self.start_live_game)
+        file_menu.addAction(live_game_tab)
 
         tool_menu = menubar.addMenu("&Tools")
         interactive_board_action = QAction("Play Current Position", self)
@@ -214,6 +219,11 @@ class BoardMaster(QMainWindow):
             with open(file_name, "r") as f:
                 self.pgn_text.setText(f.read())
             self.load_game()
+    
+    def start_live_game(self):
+        self.lg_ctr += 1
+        new_tab = GameTab(self)
+        self.tab_widget.addTab(new_tab, f"Live Game {self.lg_ctr}")
 
     def open_interactive_board(self):
         """

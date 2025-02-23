@@ -11,10 +11,6 @@ from PySide6.QtCore import Qt
 from main_window import BoardMaster
 
 if __name__ == "__main__":
-    """
-    @brief Main entry point for the BoardMaster application.
-    @details Initializes high DPI settings, creates the QApplication and the main window.
-    """
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv)
     window = BoardMaster()

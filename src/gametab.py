@@ -855,7 +855,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             if self.is_live_game is False:
                 y_off = 129
             else:
-                y_off = 89
+                y_off = 129
             self.drag_current_pos = QPointF(self.drag_current_pos.x() - 44, self.drag_current_pos.y() - y_off)
             # Do not update drag_offset; use the stored value from mousePressEvent
             piece = self.current_board.piece_at(self.drag_start_square)
@@ -882,7 +882,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             if self.is_live_game is False:
                 pos = pos - QPointF(44, 129)
             else:
-                pos = pos - QPointF(44, 89)
+                pos = pos - QPointF(44, 129)
                 
             # Adjust coordinate calculation based on board orientation
             if self.flipped:

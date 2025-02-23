@@ -66,7 +66,7 @@ class EvaluationGraphPG(QWidget):
             mousePoint = vb.mapSceneToView(pos)
             move_index = int(mousePoint.x()+1)
             if self.game_tab is not None:
-                self.game_tab.goto_move(move_index*2-1)
+                self.game_tab.goto_move(move_index*2-1-1) # Dumb way to get the move index but it works
 
 
 class MoveLabel(QLabel):
