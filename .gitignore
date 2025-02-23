@@ -12,3 +12,4 @@ piece_images/
 stockfish.exe
 __pycache__/
 engine_test.py
+web/

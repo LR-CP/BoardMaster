@@ -178,7 +178,7 @@ class BoardMaster(QMainWindow):
 
     def open_pgn_file(self):
         file_name, _ = QFileDialog.getOpenFileName(
-            self, "Open PGN File", "", "PGN files (*.pgn)"
+            self, "Open PGN File", self.settings.value("game_dir", "", str), "PGN files (*.pgn)"
         )
         if file_name:
             with open(file_name, "r") as f:

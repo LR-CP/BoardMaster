@@ -71,6 +71,16 @@ class SettingsDialog(QDialog):
         engine_layout.addWidget(engine_browse)
         layout.addLayout(engine_layout)
 
+        games_dir_layout = QHBoxLayout()
+        self.games_dir = QLineEdit()
+        self.games_dir.setText(self.settings.value("game_dir", "", str))
+        self.games_dir.setPlaceholderText("Path to game directory")
+        games_dir_browse = QPushButton("Browse")
+        games_dir_browse.clicked.connect(self.browse_game_dir)
+        games_dir_layout.addWidget(self.games_dir)
+        games_dir_layout.addWidget(games_dir_browse)
+        layout.addLayout(games_dir_layout)
+
         self.thread_spin = QSpinBox()
         self.thread_spin.setRange(1, os.cpu_count())
         self.thread_spin.setValue(self.settings.value("engine/threads", 4, int))
@@ -132,6 +142,15 @@ class SettingsDialog(QDialog):
         if file_name:
             self.engine_path.setText(file_name)
     
+    def browse_game_dir(self):
+        file_name = QFileDialog.getExistingDirectory(
+            self,
+            "Select Game Folder",
+            ""
+        )
+        if file_name:
+            self.games_dir.setText(file_name)
+    
     def save_settings(self):
         self.settings.setValue("engine/depth", self.depth_spin.value())
         self.settings.setValue("display/show_arrows", self.show_arrows.isChecked())
@@ -141,6 +160,7 @@ class SettingsDialog(QDialog):
         self.settings.setValue("engine/threads", self.thread_spin.value())
         self.settings.setValue("engine/memory", self.memory_spin.value())
         self.settings.setValue("engine/path", self.engine_path.text())
+        self.settings.setValue("game_dir", self.games_dir.text())
         self.parent().engine = self.parent().initialize_engine()
         self.accept()
 
