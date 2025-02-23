@@ -10,6 +10,8 @@ from PySide6.QtGui import QPainter, QColor, QPixmap, QPen, QFont
 import math
 from utils import MoveRow, EvaluationGraphPG
 
+#TODO: Arrows dont draw properly when in blacks perspective, ellipse not drawing on righ mouse click
+
 class CustomSVGWidget(QSvgWidget):
     def __init__(self, parent=None):
         """
@@ -23,6 +25,7 @@ class CustomSVGWidget(QSvgWidget):
         self.highlight_moves = []  # NEW: squares to highlight
         self.last_move_eval = None  # NEW: Store evaluation symbol for last move
         self.flipped = False
+        self.user_circles = set()  # Initialize user_circles as empty set
 
     def paintEvent(self, event):
         """
@@ -39,9 +42,15 @@ class CustomSVGWidget(QSvgWidget):
             f = chess.square_file(square)
             r = chess.square_rank(square)
             if type is not None and self.flipped:
-                return 7 - f, r     # Flip file, keep rank as-is
+                return 7 - f, r  # Flip file, keep rank as-is
             else:
-                return f, 7 - r     # Normal: invert rank for top-left origin
+                return f, 7 - r  # Normal: invert rank for top-left origin
+
+        def get_square_center(square):
+            disp_file, disp_rank = get_square_coordinates(square)
+            x = global_offset + disp_file * self.square_size + self.square_size/2
+            y = global_offset + disp_rank * self.square_size + self.square_size/2
+            return QPointF(x, y)
 
         # Draw square overlays
         for square, color in self.squares.items(): # For mouse release yellow highlight of clicked piece
@@ -84,7 +93,52 @@ class CustomSVGWidget(QSvgWidget):
             y = global_offset + disp_rank * self.square_size
             painter.drawText(QRectF(x, y, self.square_size, self.square_size), 
                            Qt.AlignCenter, eval_symbol)
+            
+        pen = QPen(QColor(255, 170, 0, 160), 5)
+        painter.setPen(pen)
+        # Find the top-level GameTab widget that has our arrows and current_arrow attributes.
+        game_tab = self.parent()
+        while game_tab and not hasattr(game_tab, 'arrows'):
+            game_tab = game_tab.parent()
+        
+        # Draw each committed arrow from the GameTab instance
+        if game_tab is not None:
+            for arrow in game_tab.arrows:
+                start_sq, end_sq = arrow
+                start_center = get_square_center(start_sq)
+                end_center = get_square_center(end_sq)
+                painter.drawLine(start_center, end_center)
+        
+            # Draw current (temporary) arrow during right-click drag
+            if game_tab is not None and game_tab.current_arrow is not None:
+                start_sq, end_sq = game_tab.current_arrow
+                start_center = get_square_center(start_sq)
+                end_center = get_square_center(end_sq)
+                painter.drawLine(start_center, end_center)
+
+        # Draw user circles
+        if hasattr(self, 'user_circles') and self.user_circles:
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            # Use a thick pen and no fill to draw an open circle covering the square
+            pen = QPen(QColor(255, 170, 0, 160), 4)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            for sq in self.user_circles:
+                # Compute top-left and center for the square
+                f, r = chess.square_file(sq), chess.square_rank(sq)
+                # If flipped, adjust file
+                if self.flipped:
+                    f = 7 - f
+                disp_x = global_offset + f * self.square_size
+                disp_y = global_offset + (7 - r) * self.square_size
+                # Draw an open circle that nearly fills the square.
+                margin = 4
+                center = QPointF(disp_x + self.square_size/2, disp_y + self.square_size/2)
+                radius = (self.square_size / 2) - margin
+                painter.drawEllipse(center, radius, radius)
+        
         painter.end()
+        
 
 class GameTab(QWidget):
     def __init__(self, parent=None):
@@ -116,6 +170,10 @@ class GameTab(QWidget):
         self.move_evaluations_scores = []  # existing evaluations list for graphing
         self.white_moves = [] # NEW: store white evaluations per move pair
         self.black_moves = [] # NEW: store black evaluations per move pair
+        self.arrows = []           # List of committed arrows as tuples: (start_square, end_square)
+        self.arrow_start = None    # Starting square for the current arrow drawing
+        self.current_arrow = None
+        self.user_circles = set()  # NEW: Set of squares with circle markers
 
         self.create_gui()
 
@@ -794,16 +852,12 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 board_y <= pos.y() <= board_y + board_size)
 
     def mousePressEvent(self, event):
-        """
-        @brief Handle mouse press events for move interactions.
-        @param event The mouse press event.
-        """
-        pos = event.localPos()  # use localPos for consistency
-
+        pos = event.localPos()
+        
         if not self.is_within_board(pos):
             return super().mousePressEvent(event)
-        
-        # Adjust coordinate calculation based on board orientation
+            
+        # Calculate square coordinates based on board orientation
         if self.flipped:
             file_idx = 7 - int(pos.x() // self.square_size)
             rank_idx = int(pos.y() // self.square_size)
@@ -813,43 +867,84 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             
         square = chess.square(file_idx, rank_idx)
         piece = self.current_board.piece_at(square)
-        if event.button() == Qt.LeftButton and piece:
-            legal = [move for move in self.current_board.legal_moves if move.from_square == square]
-            self.board_display.highlight_moves = [move.to_square for move in legal]
-            self.selected_square = square
-            self.board_display.update()
-            self.dragging = True
-            self.drag_start_square = square
+        
+        # Handle right-click for arrows/circles
+        if event.button() == Qt.RightButton:
+            self.arrow_start = square
+            self.current_arrow = (square, square)
+            self.right_click_pos = pos
+            event.accept()
+            self.board_display.repaint()
+            return
+
+        # Handle left-click
+        if event.button() == Qt.LeftButton:
+            # If clicking on empty square, only clear arrows and circles
+            if not piece:
+                self.arrows = []
+                self.current_arrow = None
+                self.arrow_start = None
+                self.user_circles = set()
+                self.board_display.user_circles = set()
+                self.board_display.repaint()
+                return
             
-            # Compute correct position based on orientation
-            global_offset = (self.board_display.width() - (self.square_size * 8)) / 2
-            if self.flipped:
-                target_top_left = QPointF(global_offset + (7 - file_idx) * self.square_size,
-                                        global_offset + rank_idx * self.square_size)
-            else:
-                target_top_left = QPointF(global_offset + file_idx * self.square_size,
-                                        global_offset + (7 - rank_idx) * self.square_size)
-                                        
-            self.drag_offset = pos - target_top_left
-            self.drag_current_pos = pos
-            
-            self.board_display.drag_info = {
-                "dragging": True,
-                "drag_current_pos": self.drag_current_pos,
-                "drag_offset": self.drag_offset,
-                "pixmap": self.get_piece_pixmap(piece)
-            }
-        else:
-            super().mousePressEvent(event)
-        self.board_display.repaint()
+            # If there's a piece, proceed with drag handling
+            if piece:
+                legal = [move for move in self.current_board.legal_moves if move.from_square == square]
+                self.board_display.highlight_moves = [move.to_square for move in legal]
+                self.selected_square = square
+                self.board_display.update()
+                self.dragging = True
+                self.drag_start_square = square
+                
+                # Compute correct position based on orientation
+                global_offset = (self.board_display.width() - (self.square_size * 8)) / 2
+                if self.flipped:
+                    target_top_left = QPointF(global_offset + (7 - file_idx) * self.square_size,
+                                            global_offset + rank_idx * self.square_size)
+                else:
+                    target_top_left = QPointF(global_offset + file_idx * self.square_size,
+                                            global_offset + (7 - rank_idx) * self.square_size)
+                                            
+                self.drag_offset = pos - target_top_left
+                self.drag_current_pos = pos
+                self.board_display.drag_info = {
+                    "dragging": True,
+                    "drag_current_pos": self.drag_current_pos,
+                    "drag_offset": self.drag_offset,
+                    "pixmap": self.get_piece_pixmap(piece)
+                }
+                self.board_display.repaint()
+                return
+                
+        super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        """
-        @brief Handle mouse move events during dragging.
-        @param event The mouse move event.
-        """
-        # if not self.is_within_board(event.localPos()):
-            # return super().mouseMoveEvent(event)
+        if event.buttons() & Qt.RightButton and self.current_arrow is not None:
+            # Update arrow endpoint as we drag
+            pos = event.localPos()
+            if not self.is_within_board(pos):
+                return
+            # Account for board offset
+            board_size = 8 * self.square_size
+            global_offset = (self.board_display.width() - board_size) / 2
+            adjusted_x = pos.x() - global_offset - 44  # Subtract window offset
+            adjusted_y = pos.y() - global_offset - 129  # Subtract window offset
+            
+            if self.flipped:
+                file_idx = int(adjusted_x // self.square_size)
+                rank_idx = 7 - int(adjusted_y // self.square_size)
+            else:
+                file_idx = int(adjusted_x // self.square_size)
+                rank_idx = 7 - int(adjusted_y // self.square_size)
+                
+            if 0 <= file_idx <= 7 and 0 <= rank_idx <= 7:
+                square = chess.square(file_idx, rank_idx)
+                self.current_arrow = (self.arrow_start, square)
+                self.board_display.update()
+            return
+
         if self.dragging:
             self.drag_current_pos = event.localPos()
             if self.is_live_game is False:
@@ -857,7 +952,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             else:
                 y_off = 129
             self.drag_current_pos = QPointF(self.drag_current_pos.x() - 44, self.drag_current_pos.y() - y_off)
-            # Do not update drag_offset; use the stored value from mousePressEvent
             piece = self.current_board.piece_at(self.drag_start_square)
             if piece:
                 self.board_display.drag_info = {
@@ -871,12 +965,23 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        """
-        @brief Handle mouse release events to finalize a move.
-        @param event The mouse release event.
-        """
-        # if not self.is_within_board(event.localPos()):
-            # return super().mouseMoveEvent(event)
+        if event.button() == Qt.RightButton and self.current_arrow is not None:
+            start, end = self.current_arrow
+            if start == end:
+                # Toggle circle marker on the square
+                if start in self.user_circles:
+                    self.user_circles.remove(start)
+                else:
+                    self.user_circles.add(start)
+                # Update the board display's circles
+                self.board_display.user_circles = self.user_circles
+            else:
+                self.arrows.append(self.current_arrow)
+            self.current_arrow = None
+            self.arrow_start = None
+            self.board_display.repaint()
+            return
+
         if self.dragging:
             pos = event.localPos()
             if self.is_live_game is False:
@@ -884,37 +989,31 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             else:
                 pos = pos - QPointF(44, 129)
                 
-            # Adjust coordinate calculation based on board orientation
             if self.flipped:
                 file_idx = 7 - int(pos.x() // self.square_size)
                 rank_idx = int(pos.y() // self.square_size)
             else:
                 file_idx = int(pos.x() // self.square_size)
                 rank_idx = 7 - int(pos.y() // self.square_size)
-                
             drop_square = chess.square(file_idx, rank_idx)
             move = chess.Move(self.drag_start_square, drop_square)
             if move in self.current_board.legal_moves:
                 self.current_board.push(move)
-                # Only add/update the move for live games
                 if self.is_live_game:
-                    # If we're not at the end of the move list, truncate it
                     if self.current_move_index < len(self.moves):
                         self.moves = self.moves[:self.current_move_index]
                         if hasattr(self, 'move_evaluations'):
                             self.move_evaluations = self.move_evaluations[:self.current_move_index]
                     self.moves.append(move)
                     self.current_move_index += 1
-                    # Clear last_move_eval since this is a live game move
                     self.board_display.last_move_eval = None
-
             self.dragging = False
             self.drag_start_square = None
             self.drag_current_pos = None
             self.drag_offset = None
             self.board_display.drag_info = {"dragging": False}
-            self.board_display.highlight_moves = []  # Clear highlights
-            self.update_display()  # full update after move
+            self.board_display.highlight_moves = []
+            self.update_display()
         else:
             super().mouseReleaseEvent(event)
 
