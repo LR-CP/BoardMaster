@@ -680,6 +680,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 if i < len(self.move_evaluations_scores):
                     self.black_moves.append(self.move_evaluations_scores[i])
         self.eval_graph.update_graph(self.white_moves, self.black_moves)
+        self.eval_graph.set_current_move((self.current_move_index + 1) // 2)
         self.check_game_over()
 
     def analyze_position(self):

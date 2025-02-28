@@ -105,8 +105,10 @@ class BoardMaster(QMainWindow):
         live_game_tab.triggered.connect(self.start_live_game)
         file_menu.addAction(live_game_tab)
         save_analysis_action = QAction("Save Analysis", self)
+        save_analysis_action.setShortcut(QKeySequence("Ctrl+S"))
         save_analysis_action.triggered.connect(lambda: self.export_pgn(analysis=True))
         load_analysis_action = QAction("Load Analysis", self)
+        load_analysis_action.setShortcut(QKeySequence("Ctrl+Shift+O"))
         load_analysis_action.triggered.connect(self.load_analysis)
         file_menu.addAction(save_analysis_action)
         file_menu.addAction(load_analysis_action)
@@ -245,7 +247,8 @@ class BoardMaster(QMainWindow):
                 analysis_data = json.load(f)
             
             self.new_tab = GameTab(self)
-            self.tab_widget.addTab(self.new_tab, f"{os.path.basename(file_path)}")
+            curr_tab_index = self.tab_widget.addTab(self.new_tab, f"{os.path.basename(file_path)}")
+            self.tab_widget.setCurrentIndex(curr_tab_index)
             
             pgn_string = analysis_data.get("pgn", "")
             if not self.new_tab.load_pgn(pgn_string):

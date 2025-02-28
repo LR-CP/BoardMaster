@@ -2,6 +2,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy, QHBoxLayout, QL
 import pyqtgraph as pg
 from PySide6.QtGui import QCursor
 from PySide6.QtCore import Qt
+from dialogs import NoteDialog
 
 class EvaluationGraphPG(QWidget):
     def __init__(self, game_tab=None, parent=None):
@@ -81,38 +82,6 @@ class EvaluationGraphPG(QWidget):
         """
         self.current_move_line.setValue(move_number)
 
-class NoteDialog(QDialog):
-    """Dialog for adding/editing move notes."""
-    def __init__(self, current_note="", parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Move Note")
-        self.setModal(True)
-        
-        layout = QVBoxLayout(self)
-        
-        # Text edit for the note
-        self.note_edit = QTextEdit()
-        self.note_edit.setText(current_note)
-        layout.addWidget(self.note_edit)
-        
-        # Buttons
-        button_layout = QHBoxLayout()
-        save_button = QPushButton("Save")
-        save_button.clicked.connect(self.accept)
-        close_button = QPushButton("Close")
-        close_button.clicked.connect(self.reject)
-        
-        button_layout.addWidget(save_button)
-        button_layout.addWidget(close_button)
-        layout.addLayout(button_layout)
-        
-        self.setMinimumWidth(300)
-        self.setMinimumHeight(200)
-
-    def get_note(self):
-        """Return the current note text."""
-        return self.note_edit.toPlainText()
-
 class MoveLabel(QLabel):
     def __init__(self, text, move_index, game_tab, parent=None):
         super().__init__(text, parent)
@@ -139,6 +108,11 @@ class MoveLabel(QLabel):
             view_action.triggered.connect(self.view_note)
             edit_action = context_menu.addAction("Edit Note ✏️")
             edit_action.triggered.connect(self.show_note_dialog)
+
+            # delete_action = context_menu.addAction("Delete Note 🗑️")
+            # delete_action.triggered.connect(self.view_note)
+            # edit_action = context_menu.addAction("Edit Note ✏️")
+            # edit_action.triggered.connect(self.show_note_dialog)
         else:
             add_action = context_menu.addAction("Add Note ➕")
             add_action.triggered.connect(self.show_note_dialog)

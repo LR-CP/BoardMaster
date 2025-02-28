@@ -352,3 +352,35 @@ class PlayStockfishDialog(QDialog):
             color = 'random'
             
         return color, int(self.elo_combo.currentText())
+    
+class NoteDialog(QDialog):
+    """Dialog for adding/editing move notes."""
+    def __init__(self, current_note="", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Move Note")
+        self.setModal(True)
+        
+        layout = QVBoxLayout(self)
+        
+        # Text edit for the note
+        self.note_edit = QTextEdit()
+        self.note_edit.setText(current_note)
+        layout.addWidget(self.note_edit)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        save_button = QPushButton("Save")
+        save_button.clicked.connect(self.accept)
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(self.reject)
+        
+        button_layout.addWidget(save_button)
+        button_layout.addWidget(close_button)
+        layout.addLayout(button_layout)
+        
+        self.setMinimumWidth(300)
+        self.setMinimumHeight(200)
+
+    def get_note(self):
+        """Return the current note text."""
+        return self.note_edit.toPlainText()
