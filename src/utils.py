@@ -1,6 +1,5 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy, QHBoxLayout, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy, QHBoxLayout, QLabel, QDialog, QTextEdit, QPushButton, QToolTip, QMenu
 import pyqtgraph as pg
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy, QToolTip
 from PySide6.QtGui import QCursor
 from PySide6.QtCore import Qt
 
@@ -32,6 +31,10 @@ class EvaluationGraphPG(QWidget):
         
         self.white_curve = self.plot_widget.plot(pen=pg.mkPen('b', width=2), name="White")
         self.black_curve = self.plot_widget.plot(pen=pg.mkPen('r', width=2), name="Black")
+        
+        # Add a vertical infinite line that tracks current move
+        self.current_move_line = pg.InfiniteLine(pos=0, angle=90, pen=pg.mkPen('g', width=2, style=Qt.DotLine))
+        self.plot_widget.addItem(self.current_move_line)
 
         # Connect signals for hover and click
         self.plot_widget.scene().sigMouseMoved.connect(self.onMouseMoved)
@@ -69,25 +72,112 @@ class EvaluationGraphPG(QWidget):
             mousePoint = vb.mapSceneToView(pos)
             move_index = int(mousePoint.x()+1)
             if self.game_tab is not None:
-                self.game_tab.goto_move(move_index*2-1-1) # Dumb way to get the move index but it works
+                self.game_tab.goto_move(move_index*2-1-1)  # Dumb way to get the move index but it works
 
+    def set_current_move(self, move_number):
+        """
+        @brief Move the vertical tracking line to the given move number (along the x-axis).
+        @param move_number The move index to track.
+        """
+        self.current_move_line.setValue(move_number)
+
+class NoteDialog(QDialog):
+    """Dialog for adding/editing move notes."""
+    def __init__(self, current_note="", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Move Note")
+        self.setModal(True)
+        
+        layout = QVBoxLayout(self)
+        
+        # Text edit for the note
+        self.note_edit = QTextEdit()
+        self.note_edit.setText(current_note)
+        layout.addWidget(self.note_edit)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        save_button = QPushButton("Save")
+        save_button.clicked.connect(self.accept)
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(self.reject)
+        
+        button_layout.addWidget(save_button)
+        button_layout.addWidget(close_button)
+        layout.addLayout(button_layout)
+        
+        self.setMinimumWidth(300)
+        self.setMinimumHeight(200)
+
+    def get_note(self):
+        """Return the current note text."""
+        return self.note_edit.toPlainText()
 
 class MoveLabel(QLabel):
     def __init__(self, text, move_index, game_tab, parent=None):
-        """
-        @brief Initialize a label that represents a move.
-        @param text Display text.
-        @param move_index Index of the move.
-        @param game_tab Reference to the GameTab instance.
-        @param parent Parent widget.
-        """
         super().__init__(text, parent)
         self.move_index = move_index
         self.game_tab = game_tab
         self.setStyleSheet("padding: 2px; margin: 1px;")
-        
+        self.note = ""  # Store the note text
+        # NEW properties to hold evaluation data:
+        self.eval_symbol = ""  # For example: "✅", "⚠️", etc.
+        self.eval_score = 0    # For example, centipawn value
+
     def mousePressEvent(self, event):
-        self.game_tab.goto_move(self.move_index)
+        if event.button() == Qt.LeftButton:
+            self.game_tab.goto_move(self.move_index)
+        elif event.button() == Qt.RightButton:
+            self.show_context_menu(event.pos())
+    
+    def show_context_menu(self, pos):
+        """Show context menu with note options."""
+        context_menu = QMenu(self)
+        
+        if self.note:
+            view_action = context_menu.addAction("View Note 📝")
+            view_action.triggered.connect(self.view_note)
+            edit_action = context_menu.addAction("Edit Note ✏️")
+            edit_action.triggered.connect(self.show_note_dialog)
+        else:
+            add_action = context_menu.addAction("Add Note ➕")
+            add_action.triggered.connect(self.show_note_dialog)
+        
+        context_menu.exec_(self.mapToGlobal(pos))
+    
+    def view_note(self):
+        """Show the note in view-only mode."""
+        if self.note:
+            dialog = NoteDialog(self.note, self)
+            dialog.note_edit.setReadOnly(True)
+            dialog.setWindowTitle("View Note")
+            dialog.exec_()
+            
+    def show_note_dialog(self):
+        """Show dialog for editing the move note."""
+        dialog = NoteDialog(self.note, self)
+        if dialog.exec_() == QDialog.Accepted:
+            self.note = dialog.get_note()
+            # Save note to GameTab's persistent storage
+            self.game_tab.move_notes[self.move_index] = self.note
+            self.update_tooltip()
+            self.update_style()
+            
+    def update_tooltip(self):
+        """Update the tooltip to show the note if it exists."""
+        if self.note:
+            self.setToolTip(self.note)
+        else:
+            self.setToolTip("")
+            
+    def update_style(self):
+        """Update the label style to indicate presence of a note."""
+        if self.note:
+            current_text = self.text().split(" 📝")[0]  # Remove existing icon if any
+            self.setText(f"{current_text} 📝")  # Add note icon
+        else:
+            current_text = self.text().split(" 📝")[0]
+            self.setText(current_text)
 
 class MoveRow(QWidget):
     def __init__(self, move_number, white_move, white_eval, white_index, 
@@ -109,50 +199,46 @@ class MoveRow(QWidget):
         layout.setContentsMargins(5, 0, 5, 0)
         layout.setSpacing(5)
         
-        # Move number
+        # Move number label
         number_label = QLabel(f"{move_number}.")
         number_label.setFixedWidth(30)
         layout.addWidget(number_label)
         
-        # White's move
+        # White's move label
         white_text = f"{white_move} {white_eval}"
         self.white_label = MoveLabel(white_text, white_index, game_tab, self)
         self.white_label.setFixedWidth(100)
+        # NEW: Initialize evaluation properties for white move
+        self.white_label.eval_symbol = white_eval
+        self.white_label.eval_score = 0  
         layout.addWidget(self.white_label)
         
-        # Black's move if exists
+        # Black's move label if available
         if black_move:
             black_text = f"{black_move} {black_eval}"
             self.black_label = MoveLabel(black_text, black_index, game_tab, self)
             self.black_label.setFixedWidth(100)
+            self.black_label.eval_symbol = black_eval
+            self.black_label.eval_score = 0
             layout.addWidget(self.black_label)
         else:
             self.black_label = QLabel()
         
         layout.addStretch()
 
-        # NEW: Add method to highlight moves
+        # Set auto fill background and initialize highlight off.
         self.white_label.setAutoFillBackground(True)
         self.black_label.setAutoFillBackground(True)
         self.highlight_off()
 
     def highlight_white(self):
-        """
-        @brief Highlight the white move widget.
-        """
         self.white_label.setStyleSheet("background-color: rgba(255, 255, 0, 100);")
         self.black_label.setStyleSheet("background-color: grey")
 
     def highlight_black(self):
-        """
-        @brief Highlight the black move widget.
-        """
         self.white_label.setStyleSheet("background-color: grey")
         self.black_label.setStyleSheet("background-color: rgba(255, 255, 0, 100);")
 
     def highlight_off(self):
-        """
-        @brief Remove all highlights from the move labels.
-        """
         self.white_label.setStyleSheet("background-color: grey")
         self.black_label.setStyleSheet("background-color: grey")

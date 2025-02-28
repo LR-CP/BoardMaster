@@ -2,6 +2,7 @@ import chess
 import chess.pgn
 import chess.engine
 import chess.svg
+import json
 import subprocess
 from PySide6.QtWidgets import *
 from PySide6.QtCore import QSettings, Qt
@@ -103,6 +104,13 @@ class BoardMaster(QMainWindow):
         live_game_tab.setShortcut(QKeySequence("Ctrl+L"))
         live_game_tab.triggered.connect(self.start_live_game)
         file_menu.addAction(live_game_tab)
+        save_analysis_action = QAction("Save Analysis", self)
+        save_analysis_action.triggered.connect(lambda: self.export_pgn(analysis=True))
+        load_analysis_action = QAction("Load Analysis", self)
+        load_analysis_action.triggered.connect(self.load_analysis)
+        file_menu.addAction(save_analysis_action)
+        file_menu.addAction(load_analysis_action)
+
 
         tool_menu = menubar.addMenu("&Tools")
         interactive_board_action = QAction("Play Current Position", self)
@@ -117,7 +125,7 @@ class BoardMaster(QMainWindow):
         # Add PGN Export action
         export_pgn_action = QAction("Export PGN", self)
         export_pgn_action.setShortcut(QKeySequence("Ctrl+Shift+E"))
-        export_pgn_action.triggered.connect(self.export_pgn)
+        export_pgn_action.triggered.connect(lambda: self.export_pgn(analysis=False))
         tool_menu.addAction(export_pgn_action)
 
         settings_menu = menubar.addMenu("&Settings")
@@ -131,6 +139,10 @@ class BoardMaster(QMainWindow):
         open_help.setShortcut(QKeySequence("F1"))
         open_help.triggered.connect(self.open_help)
         help_menu.addAction(open_help)
+
+        play_menu = self.menuBar().addMenu("Play")
+        play_stockfish_action = play_menu.addAction("Play vs Stockfish")
+        play_stockfish_action.triggered.connect(self.play_vs_stockfish)
 
     def initialize_engine(self):
         """
@@ -189,17 +201,66 @@ class BoardMaster(QMainWindow):
         splitter = PGNSplitterDialog(self)
         splitter.exec()
     
-    def export_pgn(self):
+    def export_pgn(self, analysis=False):
         """
         @brief Export the current game to a PGN file.
         """
         pgn_str, fname = self.new_tab.export_pgn()
-        file_name, _ = QFileDialog.getSaveFileName(
-            self, "Save PGN File", fname, "PGN files (*.pgn)"
-        )
-        if file_name:
-            with open(file_name, "w") as f:
-                f.write(pgn_str)
+
+        if analysis is False:
+            file_name, _ = QFileDialog.getSaveFileName(
+                self, "Save PGN File", fname, "PGN files (*.pgn)"
+            )
+            if file_name:
+                with open(file_name, "w") as f:
+                    f.write(pgn_str)
+
+        if analysis is True:
+            analysis_data = {
+                "pgn": pgn_str,
+                "moves": [move.uci() for move in self.new_tab.moves],
+                "move_evaluations": self.new_tab.move_evaluations,
+                "move_evaluations_scores": self.new_tab.move_evaluations_scores,
+                "white_accuracy": self.new_tab.white_accuracy,
+                "black_accuracy": self.new_tab.black_accuracy,
+                "move_notes": self.new_tab.move_notes
+            }
+
+            file_name, _ = QFileDialog.getSaveFileName(
+                self, "Save JSON File", fname.replace(".pgn", ".json"), "JSON files (*.json)"
+            )
+            if file_name:
+                with open(file_name, "w", encoding="utf-8") as f:
+                    json.dump(analysis_data, f, indent=2)
+
+                QMessageBox.information(self, "Analysis Saved", f"Analysis saved to:\n{file_name}")
+    
+    def load_analysis(self):
+        """
+        Load the analysis from a file and restore game state.
+        """
+        file_path, _ = QFileDialog.getOpenFileName(self, "Load Analysis", "", "Analysis Files (*.json)")
+        if file_path:
+            with open(file_path, "r", encoding="utf-8") as f:
+                analysis_data = json.load(f)
+            
+            self.new_tab = GameTab(self)
+            self.tab_widget.addTab(self.new_tab, f"{os.path.basename(file_path)}")
+            
+            pgn_string = analysis_data.get("pgn", "")
+            if not self.new_tab.load_pgn(pgn_string):
+                QMessageBox.critical(self, "Load Failed", "Failed to load the game from the analysis file.")
+                return
+
+            self.new_tab.move_evaluations = analysis_data.get("move_evaluations", [])
+            self.new_tab.move_evaluations_scores = analysis_data.get("move_evaluations_scores", [])
+            self.new_tab.white_accuracy = analysis_data.get("white_accuracy", 0)
+            self.new_tab.black_accuracy = analysis_data.get("black_accuracy", 0)
+            self.new_tab.move_notes = analysis_data.get("move_notes", {})
+            self.new_tab.has_been_analyzed = True
+            self.new_tab.update_display()
+            self.new_tab.update_game_summary()
+            QMessageBox.information(self, "Analysis Loaded", "Analysis loaded successfully.")
 
     def open_help(self):
         """
@@ -270,3 +331,17 @@ class BoardMaster(QMainWindow):
             self.engine.quit()
             print("Engine stopped.")
         super().closeEvent(event)
+
+    def play_vs_stockfish(self):
+        """
+        @brief Start a game against Stockfish.
+        """
+        dialog = PlayStockfishDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            color, elo = dialog.get_settings()
+            # Create new game tab
+            new_tab = GameTab(self)
+            self.tab_widget.addTab(new_tab, "vs Stockfish")
+            self.tab_widget.setCurrentWidget(new_tab)
+            # Start the game
+            new_tab.start_game_vs_computer(color, elo)

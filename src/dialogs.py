@@ -15,7 +15,7 @@ class HelpDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("BoardMaster Help")
         self.setWindowIcon(QIcon("./img/king.ico"))
-        self.resize(600, 400)
+        self.resize(600, 700)
 
         layout = QVBoxLayout(self)
 
@@ -27,20 +27,31 @@ class HelpDialog(QDialog):
             "It provides a rich graphical interface built with PySide6 for navigating through games, "
             "displaying an evaluation bar, annotated moves, and interactive board controls.\n\n"
             "Features:\n"
-            "• Load games by pasting PGN text or opening a PGN file.\n"
-            "• Automatic analysis of each move to assess accuracy, identify mistakes, and highlight excellent moves.\n"
-            "• A dynamic evaluation bar that reflects the positional advantage based on pre-computed game analysis.\n"
-            "• Move navigation controls: first, previous, next, and last move, as well as a board flip option.\n"
-            "• Interactive board play for testing positions.\n"
-            "• Customizable engine settings, including analysis depth and number of analysis lines.\n\n"
+            "• Load games by pasting PGN text or opening a PGN file\n"
+            "• Split large PGN files containing multiple games into individual files\n"
+            "• Automatic analysis of each move to assess accuracy, identify mistakes, and highlight excellent moves\n"
+            "• A dynamic evaluation bar that reflects the positional advantage based on pre-computed game analysis\n"
+            "• Move navigation controls: first, previous, next, and last move, as well as a board flip option\n"
+            "• Interactive board play for testing positions\n"
+            "• Customizable engine settings including:\n"
+            "  - Analysis depth\n"
+            "  - Number of analysis lines/arrows\n"
+            "  - Engine threads\n"
+            "  - Memory allocation\n"
+            "  - Analysis time per position\n"
+            "  - Analysis time for full games\n"
+            "• Configurable game directory for organizing PGN files\n"
+            "• Visual arrow indicators showing engine suggestions\n\n"
             "How to Use BoardMaster:\n"
-            "1. Load a game by pasting PGN text into the provided input area or by opening a PGN file.\n"
-            "2. Once loaded, the game is automatically analyzed, and move evaluations are computed.\n"
-            "3. Use the navigation buttons to move through the game and view evaluations and annotations.\n"
-            "4. The evaluation bar visually displays the advantage between White and Black.\n"
-            "5. Adjust settings via the Settings menu to customize the engine analysis parameters.\n"
-            "6. Use the interactive board tool to experiment with positions directly.\n\n"
-            "Enjoy exploring your chess games with BoardMaster!"
+            "1. Configure your chess engine (e.g. Stockfish) in Settings\n"
+            "2. Load a game by pasting PGN or opening a PGN file\n"
+            "3. Use the PGN Splitter to split large collections into individual game files\n"
+            "4. The game will be automatically analyzed with your configured settings\n"
+            "5. Navigate moves using the control buttons or arrow keys\n"
+            "6. View engine evaluations, arrows, and move annotations\n"
+            "7. Adjust analysis parameters in Settings to balance speed and accuracy\n"
+            "8. Use the board flip button to view the position from either side\n\n"
+            "All settings are automatically saved between sessions. Enjoy analyzing your chess games with BoardMaster!"
         )
 
         # Using QTextBrowser to allow for rich text or scrolling
@@ -283,3 +294,61 @@ class PGNSplitterDialog(QDialog):
         except Exception as e:
             progress.cancel()
             self.pgn_text.setPlaceholderText(f"Error splitting PGN: {str(e)}")
+
+class PlayStockfishDialog(QDialog):
+    def __init__(self, parent=None):
+        """
+        @brief Dialog for setting up a game against Stockfish.
+        @param parent Parent widget.
+        """
+        super().__init__(parent)
+        self.setWindowTitle("Play Against Stockfish")
+        self.setWindowIcon(QIcon("./img/king.ico"))
+        
+        layout = QVBoxLayout(self)
+        
+        # Color selection
+        color_group = QGroupBox("Play as")
+        color_layout = QHBoxLayout()
+        self.white_radio = QRadioButton("White")
+        self.black_radio = QRadioButton("Black")
+        self.random_radio = QRadioButton("Random")
+        self.white_radio.setChecked(True)
+        color_layout.addWidget(self.white_radio)
+        color_layout.addWidget(self.black_radio)
+        color_layout.addWidget(self.random_radio)
+        color_group.setLayout(color_layout)
+        layout.addWidget(color_group)
+        
+        # ELO selection
+        elo_layout = QHBoxLayout()
+        elo_layout.addWidget(QLabel("Stockfish ELO:"))
+        self.elo_combo = QComboBox()
+        elos = ["800", "1000", "1200", "1400", "1600", "1800", "2000", "2200", "2400", "2600"]
+        self.elo_combo.addItems(elos)
+        self.elo_combo.setCurrentText("1400")  # Default ELO
+        elo_layout.addWidget(self.elo_combo)
+        layout.addLayout(elo_layout)
+        
+        # Buttons
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
+            Qt.Horizontal, self
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def get_settings(self):
+        """
+        @brief Get the selected game settings.
+        @return Tuple of (color, elo) where color is 'white', 'black', or 'random'.
+        """
+        if self.white_radio.isChecked():
+            color = 'white'
+        elif self.black_radio.isChecked():
+            color = 'black'
+        else:
+            color = 'random'
+            
+        return color, int(self.elo_combo.currentText())

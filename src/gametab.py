@@ -3,6 +3,7 @@ import chess.pgn
 import chess.engine
 import chess.svg
 import io
+import json
 from PySide6.QtWidgets import *
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtCore import QByteArray, QSettings, Qt, QPointF, QRectF
@@ -10,7 +11,8 @@ from PySide6.QtGui import QPainter, QColor, QPixmap, QPen, QFont
 import math
 from utils import MoveRow, EvaluationGraphPG
 
-#TODO: Arrows dont draw properly when in blacks perspective, ellipse not drawing on righ mouse click
+#TODO: Add feature to load fen on live game tab
+#TODO: Add board editor feature to live game tab
 
 class CustomSVGWidget(QSvgWidget):
     def __init__(self, parent=None):
@@ -175,6 +177,13 @@ class GameTab(QWidget):
         self.current_arrow = None
         self.user_circles = set()  # NEW: Set of squares with circle markers
         self.show_arrows = True  # Add this after other initializations
+        self.last_shown_game_over = False  # Add this to track if we've shown the game over dialog
+        self.has_been_analyzed = False  # Add this new flag
+        self.move_notes = {}  # Add this new dict to store move notes
+
+        # NEW: Initialize accuracy attributes to avoid attribute errors
+        self.white_accuracy = 0
+        self.black_accuracy = 0
 
         self.create_gui()
 
@@ -217,8 +226,12 @@ class GameTab(QWidget):
         self.arrow_button.clicked.connect(self.arrow_toggle)
         nav_layout.addWidget(self.arrow_button)
 
-        # self.status_label = QLabel("Analysis Arrows: ON")
-        # nav_layout.addWidget(self.status_label)
+        # Add analyze button
+        self.analyze_button = QPushButton("Analyze Game")
+        self.analyze_button.clicked.connect(self.analyze_completed_game)
+        self.analyze_button.setVisible(False)  # Initially hidden
+        nav_layout.addWidget(self.analyze_button)
+
         left_layout.addLayout(nav_layout)
 
         self.fen_box = QLineEdit("FEN: ")
@@ -255,11 +268,8 @@ class GameTab(QWidget):
         right_layout.addWidget(self.analysis_text)
 
         # NEW: Add evaluation graph widget below analysis text
-        # self.graph_dock = QDockWidget("Evaluation Graph", self)
-        # self.graph_dock.setAllowedAreas(Qt.BottomDockWidgetArea)
         self.eval_graph = EvaluationGraphPG(self)
         right_layout.addWidget(self.eval_graph)
-        # self.graph_dock.setWidget(self.eval_graph)
 
         layout.addWidget(left_panel)
         layout.addWidget(right_panel)
@@ -286,43 +296,46 @@ class GameTab(QWidget):
         self.progress.setWindowFlags(
             Qt.WindowType.Dialog
             | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint  # Keeps dialog on top while allowing window movement
+            | Qt.WindowType.WindowStaysOnTopHint
         )
         self.progress.setValue(1)
         return self.progress
 
     def load_pgn(self, pgn_string):
         """
-        @brief Load a PGN game from a provided PGN string.
-        @param pgn_string The PGN text.
-        @return True if loaded successfully; otherwise False.
+        Load a PGN game from a provided PGN string.
+        Returns True if loaded successfully; otherwise False.
         """
         self.is_live_game = False
         self.current_variation = None
         self.variations = {}
         self.variation_evaluations = {}
         try:
-            hdrs_io = io.StringIO(pgn_string)
-            self.hdrs = chess.pgn.read_headers(hdrs_io)
+            # Read the game once from the PGN string.
+            pgn_io = io.StringIO(pgn_string)
+            self.current_game = chess.pgn.read_game(pgn_io)
+            if not self.current_game:
+                return False
+            # Save headers from the loaded game.
+            self.hdrs = self.current_game.headers
             self.game_details.setText(
-                f"White: {self.hdrs.get("White")}({self.hdrs.get("WhiteElo")})\nBlack: {self.hdrs.get("Black")}({self.hdrs.get("BlackElo")})\n{self.hdrs.get("Date")}\nResult: {self.hdrs.get("Termination")}\n\n\nOpening: {self.hdrs.get("Opening")}"
+                f"White: {self.hdrs.get('White')}({self.hdrs.get('WhiteElo')})\n"
+                f"Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})\n"
+                f"{self.hdrs.get('Date')}\nResult: {self.hdrs.get('Termination')}\n\n\n"
+                f"Opening: {self.hdrs.get('Opening')}"
             )
         except Exception as e:
             print(f"Error loading game: {str(e)}")
             return False
         try:
-            pgn_io = io.StringIO(pgn_string)
-            self.current_game = chess.pgn.read_game(pgn_io)
-            if not self.current_game:
-                return False
-
             self.moves = list(self.current_game.mainline_moves())
             total_moves = len(self.moves)
             self.loading_bar = self.show_loading(max=total_moves)
             self.progress.setMaximum(total_moves)
             self.current_board = self.current_game.board()
             self.current_move_index = 0
-            self.analyze_all_moves()
+            self.has_been_analyzed = False
+            self.analyze_button.setVisible(True)
             self.update_display()
             self.update_game_summary()
             self.loading_bar.close()
@@ -342,92 +355,58 @@ class GameTab(QWidget):
 
         def calculate_accuracy(eval_diff, position_eval):
             """
-            Calculate move accuracy using a more sophisticated formula that considers:
-            1. The absolute evaluation difference
-            2. The current position's evaluation
-            3. Different scaling for winning/losing positions
+            Calculate move accuracy using a more sophisticated formula.
             """
-            # Base scaling factor
-            max_loss = 300  # Maximum centipawn loss before accuracy drops significantly
-            
-            # Adjust scaling based on position
+            max_loss = 300  
             if abs(position_eval) > 200:
-                # In clearly winning/losing positions, be more lenient
                 max_loss *= 1.5
             elif abs(position_eval) < 50:
-                # In equal positions, be more strict
                 max_loss *= 0.8
-                
-            # Calculate base accuracy
             accuracy = max(0, 100 * (1 - (eval_diff / max_loss) ** 0.5))
-            
-            # Additional penalties for very large mistakes
             if eval_diff > max_loss * 2:
                 accuracy *= 0.5
-            
             return max(0, min(100, accuracy))
 
         for i, move in enumerate(self.moves):
             if temp_board.is_game_over():
                 break
 
-            # Get evaluation before the move
             pre_move_analysis = self.engine.analyse(
                 temp_board,
                 chess.engine.Limit(time=self.settings.value("analysis/fulltime", 0.1, int)),
                 multipv=1
             )
             pre_move_eval = self.eval_to_cp(pre_move_analysis[0]["score"].relative)
-
-            # Make the move
             temp_board.push(move)
-
-            # Get evaluation after the move
             post_move_analysis = self.engine.analyse(
                 temp_board,
                 chess.engine.Limit(time=self.settings.value("analysis/fulltime", 0.1, int)),
                 multipv=1
             )
             post_move_eval = -self.eval_to_cp(post_move_analysis[0]["score"].relative)
-
-            # Calculate evaluation difference
             eval_diff = abs(post_move_eval - pre_move_eval)
-            
-            # Store the evaluation for position display
             self.move_evaluations_scores.append(post_move_eval)
-
-            # Calculate accuracy
             accuracy = calculate_accuracy(eval_diff, pre_move_eval)
-
-            # Store accuracy
-            if i % 2 == 0:  # White's move
+            if i % 2 == 0:
                 self.accuracies["white"].append(accuracy)
-            else:  # Black's move
+            else:
                 self.accuracies["black"].append(accuracy)
-
-            # Annotate move based on eval difference and position context
-            # These thresholds are now relative to the position's evaluation
             base_threshold = 25 if abs(pre_move_eval) < 200 else 40
-            
             evaluation = ""
             if eval_diff < base_threshold:
-                evaluation = "✅"  # Excellent / Best move
+                evaluation = "✅"
             elif eval_diff < base_threshold * 2:
-                evaluation = "👍"  # Good move
+                evaluation = "👍"
             elif eval_diff < base_threshold * 4:
-                evaluation = "⚠️"  # Inaccuracy
+                evaluation = "⚠️"
             elif eval_diff < base_threshold * 8:
-                evaluation = "❌"  # Mistake
+                evaluation = "❌"
             else:
-                evaluation = "🔥"  # Blunder
-
+                evaluation = "🔥"
             self.move_evaluations.append(evaluation)
-
-            # Update progress bar
             self.progress.setValue(i + 1)
             QApplication.processEvents()
 
-        # Calculate final accuracy scores
         self.white_accuracy = (
             round(sum(self.accuracies["white"]) / len(self.accuracies["white"]), 2)
             if self.accuracies["white"]
@@ -438,7 +417,7 @@ class GameTab(QWidget):
             if self.accuracies["black"]
             else 0
         )
-
+    
     def update_game_summary(self):
         """
         @brief Update the game summary based on move evaluations.
@@ -506,9 +485,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         @param eval_score The evaluation score object.
         @return The centipawn value.
         """
-        """Convert evaluation to centipawns, handles Mate cases."""
         if eval_score.is_mate():
-            # Convert mate scores to high centipawn values
             if eval_score.mate() > 0:
                 return 20000 - eval_score.mate() * 10
             else:
@@ -521,8 +498,8 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         """
         arrows = []
         annotations = {}
-        eval_score = 0  # Default value
-        squares = {}  # This dict will be used for colored square overlays
+        eval_score = 0
+        squares = {}
 
         if not self.current_board.is_game_over() and self.settings.value("display/show_arrows", True, bool):
             info = self.engine.analyse(
@@ -540,7 +517,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                     move = pv["pv"][0]
                     score = self.eval_to_cp(pv["score"].relative) if hasattr(self, 'eval_to_cp') else 0
                     analysis_text += f"{i}. {self.current_board.san(move)} (eval: {score/100:+.2f})\n"
-                    # Retain annotation arrows for best moves
                     color = QColor("#00ff00") if i <= 1 else QColor("#007000")
                     if self.show_arrows:
                         arrows.append(chess.svg.Arrow(
@@ -567,20 +543,16 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             for move in self.legal_moves:
                 squares[move.to_square] = QColor(0, 100, 0, 100)
 
-        # Overlay a transparent purple square on the destination of the most recent move.
         if self.current_move_index > 0 and self.moves:
             last_move = self.moves[self.current_move_index - 1]
-            # Convert move squares to match the display orientation
             squares[last_move.to_square] = QColor(128, 0, 128, 100)
             squares[last_move.from_square] = QColor(128, 0, 128, 100)
 
-        # Make the king glow red when in check or mate.
         if self.current_board.is_check():
             king_square = self.current_board.king(self.current_board.turn)
             if king_square is not None:
                 squares[king_square] = QColor(255, 0, 0, 150)
 
-        # Generate the base SVG board (without overlays)
         board_svg = chess.svg.board(
             self.current_board,
             arrows=arrows,
@@ -588,9 +560,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             orientation=chess.BLACK if self.flipped else chess.WHITE
         )
         self.board_display.load(QByteArray(board_svg.encode("utf-8")))
-        # Pass the computed squares into our custom widget so its paintEvent draws centered overlays.
         self.board_display.squares = squares
-        # NEW: Pass drag info if dragging is active
         if self.dragging and self.drag_current_pos and self.drag_offset:
             piece = self.current_board.piece_at(self.drag_start_square)
             if piece:
@@ -605,7 +575,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         else:
             self.board_display.drag_info = {"dragging": False}
         
-        # Update last move evaluation display
         if self.current_move_index > 0 and self.moves:
             last_move = self.moves[self.current_move_index - 1]
             if self.current_move_index - 1 < len(self.move_evaluations):
@@ -626,19 +595,16 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         )
         self.fen_box.setText(f"FEN: {self.current_board.fen()}")
 
-        # Update move list
         self.move_list.clear()
         temp_board = chess.Board()
         move_number = 1
         i = 0
         
         while i < len(self.moves):
-            # Get white's move
             white_move = temp_board.san(self.moves[i])
             white_eval = self.move_evaluations[i] if i < len(self.move_evaluations) else ""
             temp_board.push(self.moves[i])
             
-            # Get black's move if available
             black_move = None
             black_eval = None
             if i + 1 < len(self.moves):
@@ -646,7 +612,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 black_eval = self.move_evaluations[i + 1] if i + 1 < len(self.move_evaluations) else ""
                 temp_board.push(self.moves[i + 1])
             
-            # Create custom widget for the move pair
             move_widget = MoveRow(
                 move_number, 
                 white_move, white_eval, i,
@@ -654,31 +619,25 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 black_move, black_eval, i + 1 if black_move else None
             )
             
-            # Add variations if they exist at this move
             if i in self.variations:
                 for var_index, variation in enumerate(self.variations[i]):
                     var_temp_board = temp_board.copy()
                     var_move_number = move_number
-                    
-                    # Create a variation row with indentation
                     variation_text = "    Variation {}: ".format(var_index + 1)
                     for j, var_move in enumerate(variation):
                         move_san = var_temp_board.san(var_move)
                         eval_symbol = self.variation_evaluations[i][var_index][j] if i in self.variation_evaluations else ""
                         variation_text += f"{move_san}{eval_symbol} "
                         var_temp_board.push(var_move)
-                    
                     var_item = QListWidgetItem(variation_text)
-                    var_item.setForeground(Qt.GlobalColor.blue)  # Make variations blue
+                    var_item.setForeground(Qt.GlobalColor.blue)
                     self.move_list.addItem(var_item)
             
-            # Create list item and set custom widget for main line
             item = QListWidgetItem(self.move_list)
             item.setSizeHint(move_widget.sizeHint())
             self.move_list.addItem(item)
             self.move_list.setItemWidget(item, move_widget)
             
-            # NEW: Highlight current move
             if i < self.current_move_index <= i + 1:
                 move_widget.highlight_white()
             elif i + 1 < self.current_move_index <= i + 2:
@@ -686,29 +645,42 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             else:
                 move_widget.highlight_off()
             
+            note_dict = {}
+            for k, v in self.move_notes.items():
+                note_dict[int(k) if isinstance(k, str) else k] = v
+            self.move_notes = note_dict
+
+            # Then apply to move widgets
+            if i in self.move_notes:
+                move_widget.white_label.note = self.move_notes[i]
+                move_widget.white_label.setToolTip(f"Note: {self.move_notes[i]}")
+                move_widget.white_label.update_style()
+                
+            if i + 1 in self.move_notes and black_move:
+                move_widget.black_label.note = self.move_notes[i + 1]
+                move_widget.black_label.setToolTip(f"Note: {self.move_notes[i + 1]}")
+                move_widget.black_label.update_style()
+            
             i += 2
             move_number += 1
 
-        # Highlight current move's row
         if self.current_move_index > 0:
             row = (self.current_move_index - 1) // 2
             self.move_list.setCurrentRow(row)
-
-        # Recompute white and black evaluations per move pair from move_evaluations_scores
+        
         self.white_moves = []
         self.black_moves = []
         board = chess.Board()
         for i, move in enumerate(self.moves):
             board.push(move)
-            if i % 2 == 0:  # White move evaluation
+            if i % 2 == 0:
                 if i < len(self.move_evaluations_scores):
                     self.white_moves.append(self.move_evaluations_scores[i])
-            else:  # Black move evaluation
+            else:
                 if i < len(self.move_evaluations_scores):
                     self.black_moves.append(self.move_evaluations_scores[i])
         self.eval_graph.update_graph(self.white_moves, self.black_moves)
-
-        # self.analyze_position() # Remove this for pre analysis (keep for move based analysis)
+        self.check_game_over()
 
     def analyze_position(self):
         """
@@ -747,20 +719,13 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         @brief Handle selection of a move from the move list.
         @param item The selected QListWidgetItem.
         """
-        # Get the stored move indices
         move_indices = item.data(Qt.ItemDataRole.UserRole)
-        
-        # If clicked on a move pair, determine which move to go to based on current position
         if isinstance(move_indices, tuple):
             white_index, black_index = move_indices
-            
-            # If we're before or at white's move, go to white's move
             if self.current_move_index <= white_index:
                 self.goto_move(white_index)
-            # If we're at black's move or after, go to black's move
             elif self.current_move_index > white_index and black_index < len(self.moves):
                 self.goto_move(black_index)
-            # If black has no move, go to white's move
             else:
                 self.goto_move(white_index)
 
@@ -783,24 +748,88 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             self.current_board.push(self.moves[self.current_move_index])
             self.current_move_index += 1
             self.update_display()
-    
+
     def export_pgn(self):
-        """Export the current game as PGN format."""
-        # Create a new game from the current position
+        """Rebuild and return a full PGN string directly from headers and moves."""
         game = chess.pgn.Game()
-        
-        # Add headers if they exist
+
+        # Apply headers if available
         if hasattr(self, 'hdrs') and self.hdrs:
             for key, value in self.hdrs.items():
                 game.headers[key] = value
-        
-        # Create the move list
+
+        # Fix the Termination/Result header
+        if "Termination" in game.headers:
+            game.headers["Result"] = game.headers.pop("Termination", "*")
+
+        # Rebuild the mainline moves
         node = game
         for move in self.moves:
             node = node.add_main_variation(move)
-        
-        # Return the PGN string
-        return str(game), f"{game.headers["White"]}_{game.headers["Black"]}_{game.headers["Date"].replace(".","_")}.pgn"
+
+        # Convert game to PGN string
+        pgn_text = str(game)
+
+        # Create a filename
+        filename = (
+            f"{game.headers.get('White', 'White')}_"
+            f"{game.headers.get('Black', 'Black')}_"
+            f"{game.headers.get('Date', 'Unknown').replace('.', '_')}.pgn"
+        )
+        json_filename = (
+            f"{game.headers.get('White', 'White')}_"
+            f"{game.headers.get('Black', 'Black')}_"
+            f"{game.headers.get('Date', 'Unknown').replace('.', '_')}.pgn"
+        )
+
+        return pgn_text, filename
+
+    ## NEW METHODS FOR SAVING/LOADING ANALYSIS ##
+    def rebuild_pgn_from_move_list(self):
+        """
+        Rebuild the PGN directly from the move_list (the visible move list widget).
+        This ensures that the saved PGN reflects exactly what the user sees, including notes.
+        """
+        # Apply headers if available
+        if hasattr(self, 'hdrs') and self.hdrs:
+            for key, value in self.hdrs.items():
+                self.current_game.headers[key] = value
+
+        if "Termination" in self.current_game.headers:
+            self.current_game.headers["Result"] = self.current_game.headers.pop("Termination", "*")
+
+        node = self.current_game
+
+        move_count = len(self.moves)
+        for row in range(self.move_list.count()):
+            item = self.move_list.item(row)
+            move_row = self.move_list.itemWidget(item)
+
+            if not isinstance(move_row, MoveRow):
+                continue  # Skip non-move rows like variation headers if they exist.
+
+            # Process white move (always present in MoveRow)
+            if move_row.white_label:
+                move_index = move_row.white_label.move_index
+                if move_index < move_count:
+                    node = node.add_main_variation(self.moves[move_index])
+                    if move_row.white_label.note:
+                        node.comment = move_row.white_label.note
+
+            # Process black move (optional in MoveRow)
+            if move_row.black_label and move_row.black_label.text().strip():
+                move_index = move_row.black_label.move_index
+                if move_index < move_count:
+                    node = node.add_main_variation(self.moves[move_index])
+                    if move_row.black_label.note:
+                        node.comment = move_row.black_label.note
+
+        return str(self.current_game)
+
+    # def load_analysis_prompt(self):
+    #     file_path, _ = QFileDialog.getOpenFileName(self, "Load Analysis", "", "Analysis Files (*.json)")
+    #     if file_path:
+    #         self.load_analysis(file_path)
 
     def prev_move(self):
         """
@@ -852,7 +881,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         @param pos The QPoint position.
         @return True if within boundaries, else False.
         """
-        """Check if position is within chess board boundaries"""
         board_size = 8 * self.square_size
         global_offset = (self.board_display.width() - board_size) / 2
         board_x = global_offset
@@ -861,12 +889,11 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 board_y <= pos.y() <= board_y + board_size)
 
     def arrow_toggle(self):
-        # Toggle arrows
         self.show_arrows = not self.show_arrows
         if not self.show_arrows:
-            self.arrows = []  # Clear existing arrows
+            self.arrows = []
         self.arrow_button.setText(f"Arrows: {'✅' if self.show_arrows else '❌'}")
-        self.update_display()  # Refresh display
+        self.update_display()
 
     def mousePressEvent(self, event):
         pos = event.localPos()
@@ -874,7 +901,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         if not self.is_within_board(pos):
             return super().mousePressEvent(event)
             
-        # Calculate square coordinates based on board orientation
         if self.flipped:
             file_idx = 7 - int(pos.x() // self.square_size)
             rank_idx = int(pos.y() // self.square_size)
@@ -885,7 +911,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         square = chess.square(file_idx, rank_idx)
         piece = self.current_board.piece_at(square)
         
-        # Handle right-click for arrows/circles
         if event.button() == Qt.RightButton:
             self.arrow_start = square
             self.current_arrow = (square, square)
@@ -894,9 +919,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             self.board_display.repaint()
             return
 
-        # Handle left-click
         if event.button() == Qt.LeftButton:
-            # If clicking on empty square, only clear arrows and circles
             if not piece:
                 self.arrows = []
                 self.current_arrow = None
@@ -906,7 +929,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 self.board_display.repaint()
                 return
             
-            # If there's a piece, proceed with drag handling
             if piece:
                 legal = [move for move in self.current_board.legal_moves if move.from_square == square]
                 self.board_display.highlight_moves = [move.to_square for move in legal]
@@ -914,8 +936,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 self.board_display.update()
                 self.dragging = True
                 self.drag_start_square = square
-                
-                # Compute correct position based on orientation
                 global_offset = (self.board_display.width() - (self.square_size * 8)) / 2
                 if self.flipped:
                     target_top_left = QPointF(global_offset + (7 - file_idx) * self.square_size,
@@ -939,23 +959,19 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
 
     def mouseMoveEvent(self, event):
         if event.buttons() & Qt.RightButton and self.current_arrow is not None:
-            # Update arrow endpoint as we drag
             pos = event.localPos()
             if not self.is_within_board(pos):
                 return
-            # Account for board offset
             board_size = 8 * self.square_size
             global_offset = (self.board_display.width() - board_size) / 2
-            adjusted_x = pos.x() - global_offset - 44  # Subtract window offset
-            adjusted_y = pos.y() - global_offset - 129  # Subtract window offset
-            
+            adjusted_x = pos.x() - global_offset - 44
+            adjusted_y = pos.y() - global_offset - 129
             if self.flipped:
                 file_idx = int(adjusted_x // self.square_size)
                 rank_idx = 7 - int(adjusted_y // self.square_size)
             else:
                 file_idx = int(adjusted_x // self.square_size)
                 rank_idx = 7 - int(adjusted_y // self.square_size)
-                
             if 0 <= file_idx <= 7 and 0 <= rank_idx <= 7:
                 square = chess.square(file_idx, rank_idx)
                 self.current_arrow = (self.arrow_start, square)
@@ -965,9 +981,9 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         if self.dragging:
             self.drag_current_pos = event.localPos()
             if self.is_live_game is False:
-                y_off = 109
+                y_off = 129
             else:
-                y_off = 109
+                y_off = 129
             self.drag_current_pos = QPointF(self.drag_current_pos.x() - 44, self.drag_current_pos.y() - y_off)
             piece = self.current_board.piece_at(self.drag_start_square)
             if piece:
@@ -981,16 +997,35 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         else:
             super().mouseMoveEvent(event)
 
+    def update_live_eval(self):
+        """
+        @brief Get and store evaluation for the current position in live games.
+        """
+        if not self.current_board.is_game_over():
+            info = self.engine.analyse(
+                self.current_board,
+                chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)),
+                multipv=1
+            )
+            eval_score = self.eval_to_cp(info[0]["score"].relative)
+            if not hasattr(self, 'move_evaluations_scores'):
+                self.move_evaluations_scores = []
+            if self.current_move_index - 1 < len(self.move_evaluations_scores):
+                self.move_evaluations_scores[self.current_move_index - 1] = eval_score
+            else:
+                self.move_evaluations_scores.append(eval_score)
+            self.white_moves = [self.move_evaluations_scores[i] for i in range(0, len(self.move_evaluations_scores), 2)]
+            self.black_moves = [self.move_evaluations_scores[i] for i in range(1, len(self.move_evaluations_scores), 2)]
+            self.eval_graph.update_graph(self.white_moves, self.black_moves)
+
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.RightButton and self.current_arrow is not None:
             start, end = self.current_arrow
             if start == end:
-                # Toggle circle marker on the square
                 if start in self.user_circles:
                     self.user_circles.remove(start)
                 else:
                     self.user_circles.add(start)
-                # Update the board display's circles
                 self.board_display.user_circles = self.user_circles
             else:
                 self.arrows.append(self.current_arrow)
@@ -1005,7 +1040,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 pos = pos - QPointF(44, 129)
             else:
                 pos = pos - QPointF(44, 129)
-                
             if self.flipped:
                 file_idx = 7 - int(pos.x() // self.square_size)
                 rank_idx = int(pos.y() // self.square_size)
@@ -1021,9 +1055,16 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                         self.moves = self.moves[:self.current_move_index]
                         if hasattr(self, 'move_evaluations'):
                             self.move_evaluations = self.move_evaluations[:self.current_move_index]
+                        if hasattr(self, 'move_evaluations_scores'):
+                            self.move_evaluations_scores = self.move_evaluations_scores[:self.current_move_index]
                     self.moves.append(move)
                     self.current_move_index += 1
                     self.board_display.last_move_eval = None
+                    self.update_live_eval()
+                    self.check_game_over()
+                    if hasattr(self, 'computer_color') and \
+                       self.current_board.turn == self.computer_color:
+                        self.make_computer_move()
             self.dragging = False
             self.drag_start_square = None
             self.drag_current_pos = None
@@ -1040,7 +1081,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         @param piece The chess piece.
         @return Scaled QPixmap of the chess piece.
         """
-        # NEW: Updated helper to load piece image with fallback if not found
         prefix = "w" if piece.color == chess.WHITE else "b"
         letter = piece.symbol().upper()
         path = f"c:/Users/LPC/Documents/Programs/BoardMaster/piece_images/{prefix.lower()}{letter.lower()}.png"
@@ -1054,3 +1094,130 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             painter.drawText(pixmap.rect(), Qt.AlignCenter, piece.symbol())
             painter.end()
         return pixmap.scaled(self.square_size, self.square_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+    def save_game_with_notes(self):
+        """Save the game PGN with move notes."""
+        game = chess.pgn.Game()
+        node = game
+        if hasattr(self, 'hdrs') and self.hdrs:
+            for key, value in self.hdrs.items():
+                game.headers[key] = value
+        for i, move in enumerate(self.moves):
+            node = node.add_variation(move)
+            move_widget = self.move_list.itemAt(i // 2).widget()
+            if i % 2 == 0:
+                note = move_widget.white_label.note
+            else:
+                note = move_widget.black_label.note
+            if note:
+                node.comment = note
+        return str(game)
+
+    def configure_engine_for_play(self, elo):
+        """
+        @brief Configure Stockfish engine for play at specified ELO.
+        @param elo The target ELO rating.
+        """
+        user_elo = max(400, min(3000, elo))
+        effective_elo = max(1320, user_elo)
+        self.engine.configure({
+            "UCI_LimitStrength": True,
+            "UCI_Elo": effective_elo,
+            "Skill Level": min(20, max(0, (effective_elo - 1000) // 100)),
+        })
+
+    def start_game_vs_computer(self, player_color, elo):
+        """
+        @brief Start a new game against the computer.
+        @param player_color 'white', 'black', or 'random'
+        @param elo Stockfish ELO rating to use
+        """
+        import random
+        
+        self.is_live_game = True
+        self.current_board = chess.Board()
+        self.moves = []
+        self.current_move_index = 0
+        self.move_evaluations = []
+        self.move_evaluations_scores = []
+        self.computer_color = chess.BLACK if player_color == 'white' else \
+                            chess.WHITE if player_color == 'black' else \
+                            random.choice([chess.WHITE, chess.BLACK])
+        
+        self.configure_engine_for_play(elo)
+        self.update_display()
+        
+        if self.computer_color == chess.WHITE:
+            self.make_computer_move()
+        self.has_been_analyzed = False
+
+    def make_computer_move(self):
+        """
+        @brief Have the computer make its move.
+        """
+        if not self.current_board.is_game_over():
+            result = self.engine.play(
+                self.current_board,
+                chess.engine.Limit(time=1.0)
+            )
+            if result.move:
+                self.current_board.push(result.move)
+                self.moves.append(result.move)
+                self.current_move_index += 1
+                self.update_live_eval()
+                self.update_display()
+                self.check_game_over()
+
+    def check_game_over(self):
+        """
+        @brief Check if the game is over and show appropriate dialog.
+        """
+        if self.current_board.is_game_over() and not self.last_shown_game_over:
+            self.last_shown_game_over = True
+            result = ""
+            if self.current_board.is_checkmate():
+                winner = "Black" if self.current_board.turn == chess.WHITE else "White"
+                result = f"Checkmate! {winner} wins!"
+            elif self.current_board.is_stalemate():
+                result = "Game Over - Stalemate!"
+            elif self.current_board.is_insufficient_material():
+                result = "Game Over - Draw by insufficient material!"
+            elif self.current_board.is_fifty_moves():
+                result = "Game Over - Draw by fifty move rule!"
+            elif self.current_board.is_repetition():
+                result = "Game Over - Draw by repetition!"
+            else:
+                result = "Game Over - Draw!"
+
+            QMessageBox.information(self, "Game Over", result)
+            self.analyze_button.setVisible(True)
+
+    def analyze_completed_game(self):
+        """
+        @brief Analyze the completed game and show the analysis.
+        """
+        if not self.moves or self.has_been_analyzed:
+            return
+
+        self.loading_bar = self.show_loading(
+            title="Analyzing Game",
+            text="Analyzing moves...",
+            max=len(self.moves)
+        )
+
+        self.engine.configure({
+            "UCI_LimitStrength": False,
+            "Skill Level": 20
+        })
+
+        self.analyze_all_moves()
+        self.update_display()
+        self.update_game_summary()
+        self.loading_bar.close()
+        self.has_been_analyzed = True
+        self.analyze_button.setVisible(False)
+        QMessageBox.information(
+            self,
+            "Analysis Complete",
+            f"Game analyzed!\nWhite Accuracy: {self.white_accuracy}%\nBlack Accuracy: {self.black_accuracy}%"
+        )
