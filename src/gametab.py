@@ -3,16 +3,43 @@ import chess.pgn
 import chess.engine
 import chess.svg
 import io
-import json
+from datasets import load_dataset
+import pandas as pd
+import re
 from PySide6.QtWidgets import *
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtCore import QByteArray, QSettings, Qt, QPointF, QRectF
 from PySide6.QtGui import QPainter, QColor, QPixmap, QPen, QFont
 import math
 from utils import MoveRow, EvaluationGraphPG
+from dialogs import LoadingDialog
 
 #TODO: Add feature to load fen on live game tab
 #TODO: Add board editor feature to live game tab
+
+OPENINGS_LOADED_FLAG = False
+
+def clean_pgn_moves(pgn_str):
+        """Remove move numbers and periods from a PGN string."""
+        tokens = pgn_str.split()
+        moves = [token for token in tokens if not re.match(r"^\d+\.$", token)]
+        return " ".join(moves)
+
+def load_openings():
+    # Load the dataset (adjust the dataset name and split as needed)
+    df = pd.read_parquet("hf://datasets/Lichess/chess-openings/data/train-00000-of-00001.parquet")
+
+    # We assume the dataset has a 'pgn' column.
+    df["pgn"] = df["pgn"].astype(str)
+    df["clean_moves"] = df["pgn"].apply(clean_pgn_moves)
+    df["move_count"] = df["clean_moves"].apply(lambda s: len(s.split()))
+    # Sort by move count descending (optional but helps if you want to iterate in order)
+    df.sort_values("move_count", ascending=False, inplace=True)
+    
+    return df.to_dict(orient='records')
+
+OPENINGS_DB = load_openings()
+
 
 class CustomSVGWidget(QSvgWidget):
     def __init__(self, parent=None):
@@ -164,7 +191,7 @@ class GameTab(QWidget):
         self.legal_moves = set()
         self.square_size = 70
         self.flipped = False
-        self.is_live_game = True
+        self.is_live_game = False
         self.dragging = False
         self.drag_start_square = None
         self.drag_current_pos = None
@@ -199,6 +226,9 @@ class GameTab(QWidget):
 
         self.game_details = QLabel()
         left_layout.addWidget(self.game_details)
+
+        self.opening_label = QLabel()
+        left_layout.addWidget(self.opening_label)
 
         board_layout = QHBoxLayout()
         self.win_bar = QLabel()
@@ -321,12 +351,12 @@ class GameTab(QWidget):
             self.game_details.setText(
                 f"White: {self.hdrs.get('White')}({self.hdrs.get('WhiteElo')})\n"
                 f"Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})\n"
-                f"{self.hdrs.get('Date')}\nResult: {self.hdrs.get('Termination')}\n\n\n"
-                f"Opening: {self.hdrs.get('Opening')}"
+                f"{self.hdrs.get('Date')}\nResult: {self.hdrs.get('Termination')}\n\n"
             )
         except Exception as e:
             print(f"Error loading game: {str(e)}")
             return False
+
         try:
             self.moves = list(self.current_game.mainline_moves())
             total_moves = len(self.moves)
@@ -406,6 +436,23 @@ class GameTab(QWidget):
             self.move_evaluations.append(evaluation)
             self.progress.setValue(i + 1)
             QApplication.processEvents()
+        
+        global OPENINGS_LOADED_FLAG
+        if OPENINGS_LOADED_FLAG == False:
+            dialog = LoadingDialog()
+            dialog.show()
+            QApplication.processEvents()
+            load_openings()
+            QApplication.processEvents()
+            dialog.accept()
+            OPENINGS_LOADED_FLAG = True
+        self.opening = self.get_opening_from_moves(temp_board)
+        self.opening_name = self.opening['name']
+        self.opening_eco = self.opening['eco']
+        if self.opening:
+            self.opening_label.setText(f"Opening: {self.opening_name} ({self.opening_eco})")
+        else:
+            self.opening_label.setText("Opening: Unknown")
 
         self.white_accuracy = (
             round(sum(self.accuracies["white"]) / len(self.accuracies["white"]), 2)
@@ -599,6 +646,23 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         temp_board = chess.Board()
         move_number = 1
         i = 0
+
+        if self.is_live_game == True:
+            if OPENINGS_LOADED_FLAG == False:
+                dialog = LoadingDialog()
+                dialog.show()
+                QApplication.processEvents()
+                load_openings()
+                QApplication.processEvents()
+                dialog.accept()
+                OPENINGS_LOADED_FLAG = True
+            opening = self.get_opening_from_moves(self.current_board)
+            opening_name = self.opening['name']
+            opening_eco = self.opening['eco']
+            if opening:
+                self.opening_label.setText(f"Opening: {opening_name} ({opening_eco})")
+            else:
+                self.opening_label.setText("Opening: Unknown")
         
         while i < len(self.moves):
             white_move = temp_board.san(self.moves[i])
@@ -827,11 +891,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
 
         return str(self.current_game)
 
-    # def load_analysis_prompt(self):
-    #     file_path, _ = QFileDialog.getOpenFileName(self, "Load Analysis", "", "Analysis Files (*.json)")
-    #     if file_path:
-    #         self.load_analysis(file_path)
-
     def prev_move(self):
         """
         @brief Go back one move.
@@ -841,14 +900,14 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             self.current_board.pop()
             self.update_display()
 
-    def first_move(self):
+    def first_move(self): # TODO: Fix so it doesnt iterate through all moves
         """
         @brief Jump to the first move of the game.
         """
         while self.current_move_index > 0:
             self.prev_move()
 
-    def last_move(self):
+    def last_move(self): # TODO: Fix so it doesnt iterate through all moves
         """
         @brief Jump to the last move of the game.
         """
@@ -966,7 +1025,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             board_size = 8 * self.square_size
             global_offset = (self.board_display.width() - board_size) / 2
             adjusted_x = pos.x() - global_offset - 44
-            adjusted_y = pos.y() - global_offset - 129
+            adjusted_y = pos.y() - global_offset - 169
             if self.flipped:
                 file_idx = int(adjusted_x // self.square_size)
                 rank_idx = 7 - int(adjusted_y // self.square_size)
@@ -982,9 +1041,9 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         if self.dragging:
             self.drag_current_pos = event.localPos()
             if self.is_live_game is False:
-                y_off = 129
+                y_off = 169
             else:
-                y_off = 129
+                y_off = 169
             self.drag_current_pos = QPointF(self.drag_current_pos.x() - 44, self.drag_current_pos.y() - y_off)
             piece = self.current_board.piece_at(self.drag_start_square)
             if piece:
@@ -1038,9 +1097,9 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         if self.dragging:
             pos = event.localPos()
             if self.is_live_game is False:
-                pos = pos - QPointF(44, 129)
+                pos = pos - QPointF(44, 169)
             else:
-                pos = pos - QPointF(44, 129)
+                pos = pos - QPointF(44, 169)
             if self.flipped:
                 file_idx = 7 - int(pos.x() // self.square_size)
                 rank_idx = int(pos.y() // self.square_size)
@@ -1222,3 +1281,31 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             "Analysis Complete",
             f"Game analyzed!\nWhite Accuracy: {self.white_accuracy}%\nBlack Accuracy: {self.black_accuracy}%"
         )
+
+    def get_opening_from_moves(self, board):
+        """
+        Given a python-chess board and a list of openings (each with a 'pgn' field),
+        returns the opening that best matches the current move sequence,
+        based on the longest matching prefix.
+        """
+        moves = []
+        temp_board = chess.Board()
+        for move in board.move_stack:
+            san = temp_board.san(move)
+            moves.append(san)
+            temp_board.push(move)
+        current_sequence = " ".join(moves)
+        
+        best_opening = None
+        best_length = 0
+        global OPENINGS_DB
+        for opening in OPENINGS_DB:
+            # Clean the PGN field to remove move numbers.
+            opening_moves = clean_pgn_moves(opening["pgn"])
+            move_count = len(opening_moves.split())
+            # If the current sequence starts with this opening's moves and it is longer than the best match so far:
+            if current_sequence.startswith(opening_moves) and move_count > best_length:
+                best_opening = opening
+                best_length = move_count
+
+        return best_opening

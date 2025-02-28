@@ -200,6 +200,7 @@ class PGNSplitterDialog(QDialog):
         """
         super().__init__(parent)
         self.setWindowTitle("PGN Splitter")
+        self.setWindowIcon(QIcon("./img/king.ico"))
         self.setMinimumSize(600, 400)
         
         layout = QVBoxLayout(self)
@@ -358,6 +359,7 @@ class NoteDialog(QDialog):
     def __init__(self, current_note="", parent=None):
         super().__init__(parent)
         self.setWindowTitle("Move Note")
+        self.setWindowIcon(QIcon("./img/king.ico"))
         self.setModal(True)
         
         layout = QVBoxLayout(self)
@@ -384,3 +386,15 @@ class NoteDialog(QDialog):
     def get_note(self):
         """Return the current note text."""
         return self.note_edit.toPlainText()
+
+class LoadingDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Loading Openings Database...")
+        self.setWindowIcon(QIcon("./img/king.ico"))
+        layout = QVBoxLayout()
+        self.label = QLabel("Please wait while the openings database is loaded...")
+        layout.addWidget(self.label)
+        self.setLayout(layout)
+        self.setModal(True)  # This blocks interaction with other windows if needed
+        self.setFixedSize(300, 100)

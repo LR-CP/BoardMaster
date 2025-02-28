@@ -44,8 +44,8 @@ class BoardMaster(QMainWindow):
         self.tab_widget = QTabWidget(tabsClosable=True)
         self.tab_widget.tabCloseRequested.connect(self.tab_widget.removeTab)
         self.new_tab = GameTab(self)
-        self.lg_ctr = 1
-        self.tab_widget.addTab(self.new_tab, f"Live Game {self.lg_ctr}")
+        self.lg_ctr = 0
+        # self.tab_widget.addTab(self.new_tab, f"Live Game {self.lg_ctr}")
         main_layout.addWidget(self.tab_widget)
 
         # Right side with PGN input
@@ -225,7 +225,9 @@ class BoardMaster(QMainWindow):
                 "move_evaluations_scores": self.new_tab.move_evaluations_scores,
                 "white_accuracy": self.new_tab.white_accuracy,
                 "black_accuracy": self.new_tab.black_accuracy,
-                "move_notes": self.new_tab.move_notes
+                "move_notes": self.new_tab.move_notes,
+                "opening_name": self.new_tab.opening_name,
+                "opening_eco": self.new_tab.opening_eco,
             }
 
             file_name, _ = QFileDialog.getSaveFileName(
@@ -260,6 +262,7 @@ class BoardMaster(QMainWindow):
             self.new_tab.white_accuracy = analysis_data.get("white_accuracy", 0)
             self.new_tab.black_accuracy = analysis_data.get("black_accuracy", 0)
             self.new_tab.move_notes = analysis_data.get("move_notes", {})
+            self.new_tab.opening_label.setText(f"Opening: {analysis_data.get("opening_name", {})} {analysis_data.get("opening_eco", {})}")
             self.new_tab.has_been_analyzed = True
             self.new_tab.update_display()
             self.new_tab.update_game_summary()
