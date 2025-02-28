@@ -8,7 +8,8 @@ set DATA_FOLDER=data
 if "%~1" == "" (
     echo Usage: .\%~n0.bat ^<command^>
     echo Available commands:
-    echo   - nuitka
+    echo   - quick
+    echo   - full
     @REM echo   - pyinstaller
     goto :eof
 )
