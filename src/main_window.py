@@ -243,7 +243,7 @@ class BoardMaster(QMainWindow):
         """
         Load the analysis from a file and restore game state.
         """
-        file_path, _ = QFileDialog.getOpenFileName(self, "Load Analysis", "", "Analysis Files (*.json)")
+        file_path, _ = QFileDialog.getOpenFileName(self, "Load Analysis", self.settings.value("game_analysis_dir", "", str), "Analysis Files (*.json)")
         if file_path:
             with open(file_path, "r", encoding="utf-8") as f:
                 analysis_data = json.load(f)

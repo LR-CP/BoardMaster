@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import *
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QPalette, QColor
 import os
 import chess.pgn
 import io
@@ -74,6 +74,7 @@ class SettingsDialog(QDialog):
         """
         super().__init__(parent)
         self.setWindowTitle("Settings")
+        self.resize(600, 400)
         self.setWindowIcon(QIcon("./img/king.ico"))
         self.settings = QSettings("BoardMaster", "BoardMaster")
         layout = QVBoxLayout(self)
@@ -99,6 +100,16 @@ class SettingsDialog(QDialog):
         games_dir_layout.addWidget(self.games_dir)
         games_dir_layout.addWidget(games_dir_browse)
         layout.addLayout(games_dir_layout)
+
+        game_analysis_layout = QHBoxLayout()
+        self.game_analysis = QLineEdit()
+        self.game_analysis.setText(self.settings.value("game_analysis_dir", "", str))
+        self.game_analysis.setPlaceholderText("Path to analysis directory")
+        game_analysis_browse = QPushButton("Browse")
+        game_analysis_browse.clicked.connect(self.browse_analysis_dir)
+        game_analysis_layout.addWidget(self.game_analysis)
+        game_analysis_layout.addWidget(game_analysis_browse)
+        layout.addLayout(game_analysis_layout)
 
         self.thread_spin = QSpinBox()
         self.thread_spin.setRange(1, os.cpu_count())
@@ -181,6 +192,18 @@ class SettingsDialog(QDialog):
         )
         if file_name:
             self.games_dir.setText(file_name)
+        
+    def browse_analysis_dir(self):
+        """
+        @brief Open a directory chooser to select the game folder.
+        """
+        file_name = QFileDialog.getExistingDirectory(
+            self,
+            "Select Analysis Folder",
+            ""
+        )
+        if file_name:
+            self.game_analysis.setText(file_name)
     
     def save_settings(self):
         """
@@ -196,6 +219,7 @@ class SettingsDialog(QDialog):
         self.settings.setValue("engine/memory", self.memory_spin.value())
         self.settings.setValue("engine/path", self.engine_path.text())
         self.settings.setValue("game_dir", self.games_dir.text())
+        self.settings.setValue("game_analysis_dir", self.game_analysis.text())
         self.parent().engine = self.parent().initialize_engine()
         self.accept()
 
@@ -368,13 +392,46 @@ class NoteDialog(QDialog):
         self.setWindowTitle("Move Note")
         self.setWindowIcon(QIcon("./img/king.ico"))
         self.setModal(True)
-        
+        self.setStyleSheet("""
+            NoteDialog {
+                background-color: #f5f5dc;  /* Soft beige background */
+            }
+            QLabel, QPushButton {
+                color: #555555;  /* Dark grey text for labels and buttons */
+            }
+            QTextEdit {
+                background-color: #fdfdfd;  /* Very light grey (almost white) */
+                color: #333333;  /* Darker text for readability */
+                border: 1px solid #cccccc;  /* Soft border */
+            }
+            QPushButton {
+                background-color: #e0e0e0;  /* Light grey buttons */
+                border: 1px solid #bbbbbb;  /* Subtle border */
+                padding: 6px;
+                border-radius: 4px;  /* Slightly rounded buttons */
+            }
+            QPushButton:hover {
+                background-color: #d6d6d6;  /* Slightly darker on hover */
+            }
+            QPushButton:pressed {
+                background-color: #c0c0c0;  /* Even darker when pressed */
+            }
+        """)
+
+
+
         layout = QVBoxLayout(self)
         
         # Text edit for the note
         self.note_edit = QTextEdit()
         self.note_edit.setText(current_note)
         layout.addWidget(self.note_edit)
+
+        # White blinking cursor
+        # palette = self.note_edit.palette()
+        # palette.setColor(QPalette.Text, QColor('white'))
+        # palette.setColor(QPalette.HighlightedText, QColor('white'))
+        # self.note_edit.setPalette(palette)
         
         # Buttons
         button_layout = QHBoxLayout()

@@ -9,7 +9,7 @@ import re
 from PySide6.QtWidgets import *
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtCore import QByteArray, QSettings, Qt, QPointF, QRectF
-from PySide6.QtGui import QPainter, QColor, QPixmap, QPen, QFont
+from PySide6.QtGui import QPainter, QColor, QPixmap, QPen, QFont, QRadialGradient, QBrush
 import math
 from utils import MoveRow, EvaluationGraphPG
 from dialogs import LoadingDialog
@@ -46,7 +46,7 @@ class CustomSVGWidget(QSvgWidget):
         """
         super().__init__(parent)
         self.squares = {}  # {square: QColor, ...}
-        self.square_size = 70
+        self.square_size = 60
         self.drag_info = {}  # New: info dict passed from GameTab
         self.highlight_moves = []  # NEW: squares to highlight
         self.last_move_eval = None  # NEW: Store evaluation symbol for last move
@@ -54,9 +54,16 @@ class CustomSVGWidget(QSvgWidget):
         self.user_circles = set()  # Initialize user_circles as empty set
     
     def resizeEvent(self, event):
-        # Recalculate square_size based on the current widget size
-        self.square_size = min(self.width(), self.height()) // 8
-        self.update()
+        # Set minimum padding around the board (in pixels)
+        padding = 30
+        
+        # Calculate available space accounting for padding
+        available_width = self.width() - (2 * padding)
+        available_height = self.height() - (2 * padding)
+        
+        # Use the smaller dimension to ensure square fits
+        self.square_size = min(available_width, available_height) / 8
+
         super().resizeEvent(event)
 
     def paintEvent(self, event):
@@ -66,44 +73,76 @@ class CustomSVGWidget(QSvgWidget):
         super().paintEvent(event)
         painter = QPainter(self)
         board_size = 8 * self.square_size
-        # Use constant offsets for both x and y so the board is centered.
-        global_offset_x = ((self.width() - board_size) // 2)
-        global_offset_y = ((self.height() - board_size) // 2)
+        
+        # Calculate global offsets to center the board
+        global_offset_x = (self.width() - board_size) / 2
+        global_offset_y = (self.height() - board_size) / 2
+        # global_offset = (self.width() - board_size) / 2
 
-        # Map a chess square to its (file, rank) coordinates.
+        # Map a chess square to its (file, rank) coordinates with proper flipping
         def get_square_coordinates(square):
             f = chess.square_file(square)
             r = chess.square_rank(square)
-            # When not flipped, we want rank 8 on top, so invert rank.
             if self.flipped:
                 return 7 - f, r
             else:
                 return f, 7 - r
 
-        #TODO: get_square_rect & get_square_center are offsetting center point of rect based on rank/file
-
-        # Return a QRectF for a square at its fixed position.
+        # Return a QRectF for a square at its position including global offset
         def get_square_rect(square):
             disp_file, disp_rank = get_square_coordinates(square)
-            x = disp_file * self.square_size  # No offset here, just relative position
-            y = disp_rank * self.square_size  # No offset here, just relative position
-            # Now return the QRectF considering the square's position and size
+            x = global_offset_x + disp_file * self.square_size
+            y = global_offset_y + disp_rank * self.square_size
+            x = x - (disp_file - (disp_file + 1))
+            y = y - (disp_rank - (disp_rank + 1))
             return QRectF(x, y, self.square_size, self.square_size)
 
+        # Calculate the center of a square
         def get_square_center(square):
-            # Get the top-left corner of the square (rect)
             rect = get_square_rect(square)
-            # Calculate the actual center of the rect by adding half the square size to both x and y
-            return rect.topLeft() + QPointF(self.square_size / 2, self.square_size / 2)
+            return rect.center()
 
-        # Draw square overlays so that each highlighted square exactly covers its board square.
+        # Draw square overlays
         for square, color in self.squares.items():
-            rect = get_square_rect(square)
-            margin = 2  # Optional margin for inset effect
-            adjusted_rect = rect.adjusted(margin, margin, -margin, -margin)
-            painter.fillRect(adjusted_rect, color)
+            # purple rect fill
+            rect = get_square_rect(square) #TODO: Without doing it this way the svg icons do not show
+            painter.fillRect(rect, color)
+            
+            # Dots in corners
+            # rect = get_square_rect(square)
+            # marker_size = self.square_size / 8
+            # marker_color = QColor(70, 130, 180)  # Steel blue
+            # Draw small circles in corners
+            # painter.setPen(Qt.NoPen)
+            # painter.setBrush(marker_color)
+            # painter.setRenderHint(QPainter.Antialiasing, True)
+            # # Top-left corner
+            # painter.drawEllipse(rect.topLeft(), marker_size, marker_size)
+            # # Top-right corner
+            # painter.drawEllipse(rect.topRight(), marker_size, marker_size)
+            # # Bottom-left corner
+            # painter.drawEllipse(rect.bottomLeft(), marker_size, marker_size)
+            # # Bottom-right corner
+            # painter.drawEllipse(rect.bottomRight(), marker_size, marker_size)
+            # Gradient squares
+            # rect = get_square_rect(square)
+            # center = rect.center()
+            # gradient = QRadialGradient(center, self.square_size/2)
+            # gradient.setColorAt(0, QColor(70, 130, 180, 100))  # Semi-transparent at center
+            # gradient.setColorAt(1, QColor(70, 130, 180, 20))   # Very transparent at edges
+            # painter.setBrush(QBrush(gradient))
+            # painter.setPen(Qt.NoPen)
+            # painter.drawRect(rect)
+        
+        # Draw evaluation symbol in the square of the last move
+        if self.last_move_eval:
+            painter.setFont(QFont('Segoe UI Symbol', int(self.square_size / 3)))
+            last_move = self.last_move_eval['move']
+            eval_symbol = self.last_move_eval['symbol']
+            rect = get_square_rect(last_move.to_square)
+            painter.drawText(rect, Qt.AlignCenter, eval_symbol)
 
-        # Draw highlighted circles for legal moves.
+        # Draw highlighted circles for legal moves
         if self.highlight_moves:
             painter.setRenderHint(QPainter.Antialiasing, True)
             pen = QPen(QColor(0, 150, 0, 200), 2)
@@ -115,7 +154,7 @@ class CustomSVGWidget(QSvgWidget):
                 radius = self.square_size / 5
                 painter.drawEllipse(center, radius, radius)
 
-        # Draw drag info.
+        # Draw drag info
         if self.drag_info.get("dragging"):
             pixmap = self.drag_info.get("pixmap")
             pos = self.drag_info.get("drag_current_pos")
@@ -124,33 +163,27 @@ class CustomSVGWidget(QSvgWidget):
                 target = pos - offset
                 painter.drawPixmap(target, pixmap)
 
-        # Draw evaluation symbol in the square of the last move.
-        if self.last_move_eval:
-            painter.setFont(QFont('Segoe UI Symbol', int(self.square_size / 3)))
-            last_move = self.last_move_eval['move']
-            eval_symbol = self.last_move_eval['symbol']
-            rect = get_square_rect(last_move.to_square)
-            painter.drawText(rect, Qt.AlignCenter, eval_symbol)
-
-        # Draw arrows.
+        # Draw arrows
         pen = QPen(QColor(255, 170, 0, 160), 5)
         painter.setPen(pen)
         game_tab = self.parent()
         while game_tab and not hasattr(game_tab, 'arrows'):
             game_tab = game_tab.parent()
+        
         if game_tab is not None:
             for arrow in game_tab.arrows:
                 start_sq, end_sq = arrow
                 start_center = get_square_center(start_sq)
                 end_center = get_square_center(end_sq)
                 painter.drawLine(start_center, end_center)
+            
             if game_tab.current_arrow is not None:
                 start_sq, end_sq = game_tab.current_arrow
                 start_center = get_square_center(start_sq)
                 end_center = get_square_center(end_sq)
                 painter.drawLine(start_center, end_center)
 
-        # Draw user circles.
+        # Draw user circles
         if hasattr(self, 'user_circles') and self.user_circles:
             painter.setRenderHint(QPainter.Antialiasing, True)
             pen = QPen(QColor(255, 170, 0, 160), 4)
@@ -329,6 +362,11 @@ class GameTab(QWidget):
             }
             QListWidget::item:selected {
                 background-color: transparent;
+            }
+            QToolTip {
+                background-color: black;
+                color: white;
+                border: 1px solid white;
             }
         """)
         self.move_list.itemClicked.connect(self.move_selected)
