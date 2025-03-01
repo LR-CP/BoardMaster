@@ -55,7 +55,7 @@ class CustomSVGWidget(QSvgWidget):
     
     def resizeEvent(self, event):
         # Recalculate square_size based on the current widget size
-        self.square_size = min(self.width(), self.height()) / 8
+        self.square_size = min(self.width(), self.height()) // 8
         self.update()
         super().resizeEvent(event)
 
@@ -67,8 +67,8 @@ class CustomSVGWidget(QSvgWidget):
         painter = QPainter(self)
         board_size = 8 * self.square_size
         # Use constant offsets for both x and y so the board is centered.
-        global_offset_x = ((self.width() - board_size) / 2)+5
-        global_offset_y = ((self.height() - board_size) / 2)+5
+        global_offset_x = ((self.width() - board_size) // 2)
+        global_offset_y = ((self.height() - board_size) // 2)
 
         # Map a chess square to its (file, rank) coordinates.
         def get_square_coordinates(square):
@@ -80,16 +80,21 @@ class CustomSVGWidget(QSvgWidget):
             else:
                 return f, 7 - r
 
+        #TODO: get_square_rect & get_square_center are offsetting center point of rect based on rank/file
+
         # Return a QRectF for a square at its fixed position.
         def get_square_rect(square):
             disp_file, disp_rank = get_square_coordinates(square)
-            x = global_offset_x + (disp_file * self.square_size) - 2
-            y = global_offset_y + (disp_rank * self.square_size) - 2
+            x = disp_file * self.square_size  # No offset here, just relative position
+            y = disp_rank * self.square_size  # No offset here, just relative position
+            # Now return the QRectF considering the square's position and size
             return QRectF(x, y, self.square_size, self.square_size)
 
         def get_square_center(square):
+            # Get the top-left corner of the square (rect)
             rect = get_square_rect(square)
-            return rect.center()
+            # Calculate the actual center of the rect by adding half the square size to both x and y
+            return rect.topLeft() + QPointF(self.square_size / 2, self.square_size / 2)
 
         # Draw square overlays so that each highlighted square exactly covers its board square.
         for square, color in self.squares.items():
