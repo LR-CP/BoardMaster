@@ -14,9 +14,6 @@ import math
 from utils import MoveRow, EvaluationGraphPG
 from dialogs import LoadingDialog
 
-#TODO: Add feature to load fen on live game tab
-#TODO: Add board editor feature to live game tab
-
 OPENINGS_LOADED_FLAG = False
 
 def clean_pgn_moves(pgn_str):
@@ -55,40 +52,53 @@ class CustomSVGWidget(QSvgWidget):
         self.last_move_eval = None  # NEW: Store evaluation symbol for last move
         self.flipped = False
         self.user_circles = set()  # Initialize user_circles as empty set
+    
+    def resizeEvent(self, event):
+        # Recalculate square_size based on the current widget size
+        self.square_size = min(self.width(), self.height()) / 8
+        self.update()
+        super().resizeEvent(event)
 
     def paintEvent(self, event):
         """
-        @brief Overridden paint event to draw highlights, drag images and evaluation symbols.
-        @param event The paint event.
+        Overridden paint event to draw highlights, drag images and evaluation symbols.
         """
         super().paintEvent(event)
         painter = QPainter(self)
         board_size = 8 * self.square_size
-        global_offset = (self.width() - board_size) / 2
-        inner_offset = 0  # simplified
+        # Use constant offsets for both x and y so the board is centered.
+        global_offset_x = ((self.width() - board_size) / 2)+5
+        global_offset_y = ((self.height() - board_size) / 2)+5
 
-        def get_square_coordinates(square, type=None):
+        # Map a chess square to its (file, rank) coordinates.
+        def get_square_coordinates(square):
             f = chess.square_file(square)
             r = chess.square_rank(square)
-            if type is not None and self.flipped:
-                return 7 - f, r  # Flip file, keep rank as-is
+            # When not flipped, we want rank 8 on top, so invert rank.
+            if self.flipped:
+                return 7 - f, r
             else:
-                return f, 7 - r  # Normal: invert rank for top-left origin
+                return f, 7 - r
+
+        # Return a QRectF for a square at its fixed position.
+        def get_square_rect(square):
+            disp_file, disp_rank = get_square_coordinates(square)
+            x = global_offset_x + (disp_file * self.square_size) - 2
+            y = global_offset_y + (disp_rank * self.square_size) - 2
+            return QRectF(x, y, self.square_size, self.square_size)
 
         def get_square_center(square):
-            disp_file, disp_rank = get_square_coordinates(square)
-            x = global_offset + disp_file * self.square_size + self.square_size/2
-            y = global_offset + disp_rank * self.square_size + self.square_size/2
-            return QPointF(x, y)
+            rect = get_square_rect(square)
+            return rect.center()
 
-        # Draw square overlays
-        for square, color in self.squares.items(): # For mouse release yellow highlight of clicked piece
-            disp_file, disp_rank = get_square_coordinates(square, "clicked")
-            x = global_offset + disp_file * self.square_size + inner_offset
-            y = global_offset + disp_rank * self.square_size + inner_offset
-            painter.fillRect(x, y, self.square_size, self.square_size, color)
+        # Draw square overlays so that each highlighted square exactly covers its board square.
+        for square, color in self.squares.items():
+            rect = get_square_rect(square)
+            margin = 2  # Optional margin for inset effect
+            adjusted_rect = rect.adjusted(margin, margin, -margin, -margin)
+            painter.fillRect(adjusted_rect, color)
 
-        # Draw highlighted circles for legal moves
+        # Draw highlighted circles for legal moves.
         if self.highlight_moves:
             painter.setRenderHint(QPainter.Antialiasing, True)
             pen = QPen(QColor(0, 150, 0, 200), 2)
@@ -96,14 +106,11 @@ class CustomSVGWidget(QSvgWidget):
             brush = QColor(0, 150, 0, 100)
             painter.setBrush(brush)
             for sq in self.highlight_moves:
-                file, rank = get_square_coordinates(sq, "circles")
-                x = global_offset + file * self.square_size
-                y = global_offset + rank * self.square_size
-                center = QPointF(x + self.square_size / 2, y + self.square_size / 2)
+                center = get_square_center(sq)
                 radius = self.square_size / 5
                 painter.drawEllipse(center, radius, radius)
 
-        # Draw drag info
+        # Draw drag info.
         if self.drag_info.get("dragging"):
             pixmap = self.drag_info.get("pixmap")
             pos = self.drag_info.get("drag_current_pos")
@@ -112,63 +119,47 @@ class CustomSVGWidget(QSvgWidget):
                 target = pos - offset
                 painter.drawPixmap(target, pixmap)
 
-        # Draw evaluation symbol with correct coordinates
+        # Draw evaluation symbol in the square of the last move.
         if self.last_move_eval:
-            painter.setFont(QFont('Segoe UI Symbol', int(self.square_size/3)))
+            painter.setFont(QFont('Segoe UI Symbol', int(self.square_size / 3)))
             last_move = self.last_move_eval['move']
             eval_symbol = self.last_move_eval['symbol']
-            disp_file, disp_rank = get_square_coordinates(last_move.to_square, "symbol")
-            x = global_offset + disp_file * self.square_size
-            y = global_offset + disp_rank * self.square_size
-            painter.drawText(QRectF(x, y, self.square_size, self.square_size), 
-                           Qt.AlignCenter, eval_symbol)
-            
+            rect = get_square_rect(last_move.to_square)
+            painter.drawText(rect, Qt.AlignCenter, eval_symbol)
+
+        # Draw arrows.
         pen = QPen(QColor(255, 170, 0, 160), 5)
         painter.setPen(pen)
-        # Find the top-level GameTab widget that has our arrows and current_arrow attributes.
         game_tab = self.parent()
         while game_tab and not hasattr(game_tab, 'arrows'):
             game_tab = game_tab.parent()
-        
-        # Draw each committed arrow from the GameTab instance
         if game_tab is not None:
             for arrow in game_tab.arrows:
                 start_sq, end_sq = arrow
                 start_center = get_square_center(start_sq)
                 end_center = get_square_center(end_sq)
                 painter.drawLine(start_center, end_center)
-        
-            # Draw current (temporary) arrow during right-click drag
-            if game_tab is not None and game_tab.current_arrow is not None:
+            if game_tab.current_arrow is not None:
                 start_sq, end_sq = game_tab.current_arrow
                 start_center = get_square_center(start_sq)
                 end_center = get_square_center(end_sq)
                 painter.drawLine(start_center, end_center)
 
-        # Draw user circles
+        # Draw user circles.
         if hasattr(self, 'user_circles') and self.user_circles:
             painter.setRenderHint(QPainter.Antialiasing, True)
-            # Use a thick pen and no fill to draw an open circle covering the square
             pen = QPen(QColor(255, 170, 0, 160), 4)
             painter.setPen(pen)
             painter.setBrush(Qt.NoBrush)
             for sq in self.user_circles:
-                # Compute top-left and center for the square
-                f, r = chess.square_file(sq), chess.square_rank(sq)
-                # If flipped, adjust file
-                if self.flipped:
-                    f = 7 - f
-                disp_x = global_offset + f * self.square_size
-                disp_y = global_offset + (7 - r) * self.square_size
-                # Draw an open circle that nearly fills the square.
+                rect = get_square_rect(sq)
                 margin = 4
-                center = QPointF(disp_x + self.square_size/2, disp_y + self.square_size/2)
+                center = rect.center()
                 radius = (self.square_size / 2) - margin
                 painter.drawEllipse(center, radius, radius)
-        
+
         painter.end()
         
-
 class GameTab(QWidget):
     def __init__(self, parent=None):
         """
@@ -215,31 +206,59 @@ class GameTab(QWidget):
         self.create_gui()
 
     def create_gui(self):
-        """
-        @brief Create and arrange the GUI elements for the game tab.
-        """
+        # Main layout preserving the original structure
         layout = QHBoxLayout(self)
-
-        # Left panel
+        
+        # Left panel - similar to original but with dock widget for board
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
-
+        
+        # Game details and opening label
         self.game_details = QLabel()
         left_layout.addWidget(self.game_details)
-
         self.opening_label = QLabel()
         left_layout.addWidget(self.opening_label)
-
-        board_layout = QHBoxLayout()
+        
+        # Board area as a dock widget
+        self.board_dock_container = QMainWindow()
+        self.board_dock_container.setDockNestingEnabled(True)
+        
+        # Dummy central widget (required for QMainWindow)
+        dummy_central = QWidget()
+        self.board_dock_container.setCentralWidget(dummy_central)
+        dummy_central.setMaximumSize(0, 0)  # Make it invisible
+        
+        # Create board dock
+        self.board_dock = QDockWidget("Chess Board", self.board_dock_container)
+        self.board_dock.setObjectName("board_dock")
+        self.board_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        self.board_dock.setFeatures(QDockWidget.DockWidgetMovable | 
+                                   QDockWidget.DockWidgetFloatable |
+                                   QDockWidget.DockWidgetClosable)
+        
+        # Create board container with win bar
+        board_container = QWidget()
+        board_layout = QHBoxLayout(board_container)
+        
+        # Win bar
         self.win_bar = QLabel()
         self.win_bar.setFixedSize(20, 600)
-        # Use our custom SVG widget
-        self.board_display = CustomSVGWidget(self)
-        self.board_display.setFixedSize(600, 600)
         board_layout.addWidget(self.win_bar)
+        
+        # Board display
+        self.board_display = CustomSVGWidget(self)
+        self.board_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.board_display.setMinimumSize(400, 400)
         board_layout.addWidget(self.board_display)
-        left_layout.addLayout(board_layout)
-
+        
+        # Add board container to dock and dock to window
+        self.board_dock.setWidget(board_container)
+        self.board_dock_container.addDockWidget(Qt.TopDockWidgetArea, self.board_dock)
+        
+        # Add dock container to layout
+        left_layout.addWidget(self.board_dock_container)
+        
+        # Navigation buttons - same as original
         nav_layout = QHBoxLayout()
         for text, func in [
             ("<<", self.first_move),
@@ -261,21 +280,39 @@ class GameTab(QWidget):
         self.analyze_button.clicked.connect(self.analyze_completed_game)
         self.analyze_button.setVisible(False)  # Initially hidden
         nav_layout.addWidget(self.analyze_button)
-
+        
         left_layout.addLayout(nav_layout)
-
+        
+        # FEN box
         self.fen_box = QLineEdit("FEN: ")
         self.fen_box.setReadOnly(True)
         left_layout.addWidget(self.fen_box)
-
+        
+        # Summary label
         self.summary_label = QLabel()
         left_layout.addWidget(self.summary_label)
-
-        # Right panel
+        
+        # Right panel with dock widgets
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
-
-        right_layout.addWidget(QLabel("Move List:"))
+        
+        # Create dock container for right panel
+        self.right_dock_container = QMainWindow()
+        self.right_dock_container.setDockNestingEnabled(True)
+        
+        # Dummy central widget for right panel
+        dummy_central_right = QWidget()
+        self.right_dock_container.setCentralWidget(dummy_central_right)
+        dummy_central_right.setMaximumSize(0, 0)  # Make it invisible
+        
+        # Create move list dock
+        self.move_list_dock = QDockWidget("Move List", self.right_dock_container)
+        self.move_list_dock.setObjectName("move_list_dock")
+        self.move_list_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        self.move_list_dock.setFeatures(QDockWidget.DockWidgetMovable | 
+                                       QDockWidget.DockWidgetFloatable |
+                                       QDockWidget.DockWidgetClosable)
+        
         self.move_list = QListWidget()
         self.move_list.setStyleSheet("""
             QListWidget {
@@ -290,24 +327,75 @@ class GameTab(QWidget):
             }
         """)
         self.move_list.itemClicked.connect(self.move_selected)
-        right_layout.addWidget(self.move_list)
-
-        right_layout.addWidget(QLabel("Analysis:"))
+        self.move_list_dock.setWidget(self.move_list)
+        self.right_dock_container.addDockWidget(Qt.TopDockWidgetArea, self.move_list_dock)
+        
+        # Create analysis dock
+        self.analysis_dock = QDockWidget("Analysis", self.right_dock_container)
+        self.analysis_dock.setObjectName("analysis_dock")
+        self.analysis_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        self.analysis_dock.setFeatures(QDockWidget.DockWidgetMovable | 
+                                      QDockWidget.DockWidgetFloatable |
+                                      QDockWidget.DockWidgetClosable)
+        
         self.analysis_text = QTextEdit()
         self.analysis_text.setReadOnly(True)
-        right_layout.addWidget(self.analysis_text)
-
-        # NEW: Add evaluation graph widget below analysis text
+        self.analysis_dock.setWidget(self.analysis_text)
+        self.right_dock_container.addDockWidget(Qt.BottomDockWidgetArea, self.analysis_dock)
+        
+        # Create evaluation graph dock
+        self.graph_dock = QDockWidget("Evaluation Graph", self.right_dock_container)
+        self.graph_dock.setObjectName("graph_dock")
+        self.graph_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        self.graph_dock.setFeatures(QDockWidget.DockWidgetMovable | 
+                                   QDockWidget.DockWidgetFloatable |
+                                   QDockWidget.DockWidgetClosable)
+        
         self.eval_graph = EvaluationGraphPG(self)
-        right_layout.addWidget(self.eval_graph)
-
+        self.graph_dock.setWidget(self.eval_graph)
+        
+        # Split docks to maintain original layout
+        self.right_dock_container.splitDockWidget(self.analysis_dock, self.graph_dock, Qt.Vertical)
+        
+        right_layout.addWidget(self.right_dock_container)
+        
+        # Add both panels to the main layout
         layout.addWidget(left_panel)
         layout.addWidget(right_panel)
-        self.update_display()
-
+        
+        # Save/restore dock layouts
+        self.restore_dock_layouts()
+        
         # Connect mouse events
         self.board_display.mousePressEvent = self.mousePressEvent
+        self.board_display.mouseMoveEvent = self.mouseMoveEvent
+        self.board_display.mouseReleaseEvent = self.mouseReleaseEvent
+        
+        self.update_display()
 
+    def save_dock_layouts(self):
+        """Save the current dock widget layouts to settings."""
+        left_state = self.board_dock_container.saveState()
+        right_state = self.right_dock_container.saveState()
+        self.settings.setValue("left_dock_layout", left_state)
+        self.settings.setValue("right_dock_layout", right_state)
+        
+    def restore_dock_layouts(self):
+        """Restore the dock widget layouts from settings."""
+        # Check if there are saved states
+        if self.settings.contains("left_dock_layout"):
+            left_state = self.settings.value("left_dock_layout")
+            self.board_dock_container.restoreState(left_state)
+            
+        if self.settings.contains("right_dock_layout"):
+            right_state = self.settings.value("right_dock_layout")
+            self.right_dock_container.restoreState(right_state)
+            
+    def closeEvent(self, event):
+        """Handle the close event to save dock layouts."""
+        self.save_dock_layouts()
+        super().closeEvent(event)
+        
     def show_loading(self, title="Loading...", text="Analyzing game...", max=0):
         """
         @brief Show a loading dialog for long-running analysis.
@@ -545,33 +633,58 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         """
         arrows = []
         annotations = {}
+
         eval_score = 0
         squares = {}
 
+        # Get the position BEFORE the current move
+        if self.is_live_game == False:
+            if self.current_move_index > 0:
+                previous_board = chess.Board()
+                for move in self.moves[:self.current_move_index - 1]:
+                    previous_board.push(move)
+            else:
+                previous_board = self.current_board
+
         if not self.current_board.is_game_over() and self.settings.value("display/show_arrows", True, bool):
-            info = self.engine.analyse(
-                self.current_board,
-                chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)),
-                multipv=self.settings.value("engine/lines", 3, int)
-            )
+            # Analyze the previous position (not the current one) to show what you could have played
+            if not self.settings.value("display/arrow_move", True, bool):
+                info = self.engine.analyse(
+                    previous_board,  # Use previous_board here
+                    chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)),
+                    multipv=self.settings.value("engine/lines", 3, int)
+                )
+            else:
+                info = self.engine.analyse(
+                    self.current_board,  # Use previous_board here
+                    chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)),
+                    multipv=self.settings.value("engine/lines", 3, int)
+                )
+
             main_eval = info[0]["score"].relative
             eval_score = self.eval_to_cp(main_eval) if hasattr(self, 'eval_to_cp') else 0
+
             analysis_text = f"Move {(self.current_move_index + 1) // 2} "
             analysis_text += f"({'White' if self.current_move_index % 2 == 0 else 'Black'})\n\n"
-            analysis_text += "Top moves:\n"
-            for i, pv in enumerate(info, 1):
+            analysis_text += "Top moves (previous position):\n"
+
+            for i, pv in enumerate(info, 0):
                 if "pv" in pv.keys():
                     move = pv["pv"][0]
                     score = self.eval_to_cp(pv["score"].relative) if hasattr(self, 'eval_to_cp') else 0
-                    analysis_text += f"{i}. {self.current_board.san(move)} (eval: {score/100:+.2f})\n"
-                    color = QColor("#00ff00") if i <= 1 else QColor("#007000")
+                    analysis_text += f"{i+1}. {previous_board.san(move)} (eval: {score/100:+.2f})\n"
+
+                    color = QColor("#00ff00") if i <= 0 else QColor("#007000")
+
                     if self.show_arrows:
                         arrows.append(chess.svg.Arrow(
                             tail=move.from_square,
                             head=move.to_square,
                             color=color.name()
                         ))
+
                     annotations[move.to_square] = f"{score/100.0:.2f}"
+
             self.analysis_text.setText(analysis_text)
 
         if self.current_move_index > 0 and hasattr(self, 'move_evaluations_scores'):
@@ -600,10 +713,12 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             if king_square is not None:
                 squares[king_square] = QColor(255, 0, 0, 150)
 
+        board_size = int(self.board_display.square_size * 8)
+        
         board_svg = chess.svg.board(
             self.current_board,
             arrows=arrows,
-            size=600,
+            size=board_size,
             orientation=chess.BLACK if self.flipped else chess.WHITE
         )
         self.board_display.load(QByteArray(board_svg.encode("utf-8")))
@@ -900,19 +1015,17 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             self.current_board.pop()
             self.update_display()
 
-    def first_move(self): # TODO: Fix so it doesnt iterate through all moves
+    def first_move(self):
         """
         @brief Jump to the first move of the game.
         """
-        while self.current_move_index > 0:
-            self.prev_move()
+        self.goto_move(0)
 
-    def last_move(self): # TODO: Fix so it doesnt iterate through all moves
+    def last_move(self):
         """
         @brief Jump to the last move of the game.
         """
-        while self.current_move_index < len(self.moves):
-            self.next_move()
+        self.goto_move(len(self.moves)-1)
 
     def board_flip(self):
         """
@@ -957,24 +1070,31 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
 
     def mousePressEvent(self, event):
         pos = event.localPos()
-        
-        if not self.is_within_board(pos):
+        board_size = 8 * self.board_display.square_size
+        global_offset = (self.board_display.width() - board_size) / 2
+
+        # Check if click is within the board area.
+        if pos.x() < global_offset or pos.x() > global_offset + board_size or \
+        pos.y() < global_offset or pos.y() > global_offset + board_size:
             return super().mousePressEvent(event)
-            
+
+        # Compute board-relative coordinates.
+        adjusted_x = pos.x() - global_offset
+        adjusted_y = pos.y() - global_offset
+
+        # Determine the clicked square.
         if self.flipped:
-            file_idx = 7 - int(pos.x() // self.square_size)
-            rank_idx = int(pos.y() // self.square_size)
+            file_idx = 7 - int(adjusted_x // self.board_display.square_size)
+            rank_idx = int(adjusted_y // self.board_display.square_size)
         else:
-            file_idx = int(pos.x() // self.square_size)
-            rank_idx = 7 - int(pos.y() // self.square_size)
-            
+            file_idx = int(adjusted_x // self.board_display.square_size)
+            rank_idx = 7 - int(adjusted_y // self.board_display.square_size)
         square = chess.square(file_idx, rank_idx)
         piece = self.current_board.piece_at(square)
-        
+
         if event.button() == Qt.RightButton:
             self.arrow_start = square
             self.current_arrow = (square, square)
-            self.right_click_pos = pos
             event.accept()
             self.board_display.repaint()
             return
@@ -988,74 +1108,129 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 self.board_display.user_circles = set()
                 self.board_display.repaint()
                 return
-            
-            if piece:
-                legal = [move for move in self.current_board.legal_moves if move.from_square == square]
-                self.board_display.highlight_moves = [move.to_square for move in legal]
-                self.selected_square = square
-                self.board_display.update()
-                self.dragging = True
-                self.drag_start_square = square
-                global_offset = (self.board_display.width() - (self.square_size * 8)) / 2
-                if self.flipped:
-                    target_top_left = QPointF(global_offset + (7 - file_idx) * self.square_size,
-                                            global_offset + rank_idx * self.square_size)
-                else:
-                    target_top_left = QPointF(global_offset + file_idx * self.square_size,
-                                            global_offset + (7 - rank_idx) * self.square_size)
-                                            
-                self.drag_offset = pos - target_top_left
-                self.drag_current_pos = pos
-                self.board_display.drag_info = {
-                    "dragging": True,
-                    "drag_current_pos": self.drag_current_pos,
-                    "drag_offset": self.drag_offset,
-                    "pixmap": self.get_piece_pixmap(piece)
-                }
-                self.board_display.repaint()
-                return
-                
+
+            # Highlight legal moves.
+            legal = [move for move in self.current_board.legal_moves if move.from_square == square]
+            self.board_display.highlight_moves = [move.to_square for move in legal]
+            self.selected_square = square
+            self.board_display.update()
+            self.dragging = True
+            self.drag_start_square = square
+
+            # Use the same helper as in paintEvent to compute the square's top-left.
+            if self.flipped:
+                f = 7 - chess.square_file(square)
+                r = chess.square_rank(square)
+            else:
+                f = chess.square_file(square)
+                r = 7 - chess.square_rank(square)
+            target_top_left = QPointF(global_offset + f * self.board_display.square_size,
+                                    global_offset + r * self.board_display.square_size)
+            # Compute the drag offset as the difference between the click position and the square's top-left.
+            self.drag_offset = pos - target_top_left
+            # self.drag_offset = pos - target_top_left - QPointF(self.get_piece_pixmap(piece).width()/2, self.get_piece_pixmap(piece).height()/2)
+            self.drag_current_pos = pos
+            self.board_display.drag_info = {
+                "dragging": True,
+                "drag_current_pos": pos,  # use the raw click position
+                "drag_offset": self.drag_offset,
+                "pixmap": self.get_piece_pixmap(piece)
+            }
+            self.board_display.repaint()
+            return
+
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        pos = event.localPos()
+        board_size = 8 * self.board_display.square_size
+        global_offset = (self.board_display.width() - board_size) / 2
+
         if event.buttons() & Qt.RightButton and self.current_arrow is not None:
-            pos = event.localPos()
-            if not self.is_within_board(pos):
+            if pos.x() < global_offset or pos.x() > global_offset + board_size or \
+            pos.y() < global_offset or pos.y() > global_offset + board_size:
                 return
-            board_size = 8 * self.square_size
-            global_offset = (self.board_display.width() - board_size) / 2
-            adjusted_x = pos.x() - global_offset - 44
-            adjusted_y = pos.y() - global_offset - 169
+            adjusted_x = pos.x() - global_offset
+            adjusted_y = pos.y() - global_offset
             if self.flipped:
-                file_idx = int(adjusted_x // self.square_size)
-                rank_idx = 7 - int(adjusted_y // self.square_size)
+                file_idx = 7 - int(adjusted_x // self.board_display.square_size)
+                rank_idx = int(adjusted_y // self.board_display.square_size)
             else:
-                file_idx = int(adjusted_x // self.square_size)
-                rank_idx = 7 - int(adjusted_y // self.square_size)
-            if 0 <= file_idx <= 7 and 0 <= rank_idx <= 7:
-                square = chess.square(file_idx, rank_idx)
-                self.current_arrow = (self.arrow_start, square)
-                self.board_display.update()
+                file_idx = int(adjusted_x // self.board_display.square_size)
+                rank_idx = 7 - int(adjusted_y // self.board_display.square_size)
+            square = chess.square(file_idx, rank_idx)
+            self.current_arrow = (self.arrow_start, square)
+            self.board_display.update()
             return
 
         if self.dragging:
             self.drag_current_pos = event.localPos()
-            if self.is_live_game is False:
-                y_off = 169
-            else:
-                y_off = 169
-            self.drag_current_pos = QPointF(self.drag_current_pos.x() - 44, self.drag_current_pos.y() - y_off)
-            piece = self.current_board.piece_at(self.drag_start_square)
-            if piece:
-                self.board_display.drag_info = {
-                    "dragging": True,
-                    "drag_current_pos": self.drag_current_pos,
-                    "drag_offset": self.drag_offset,
-                    "pixmap": self.get_piece_pixmap(piece)
-                }
+            self.board_display.drag_info = {
+                "dragging": True,
+                "drag_current_pos": self.drag_current_pos,
+                "drag_offset": self.drag_offset,  # constant from the press event
+                "pixmap": self.get_piece_pixmap(self.current_board.piece_at(self.drag_start_square))
+            }
             self.board_display.repaint()
         else:
             super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        board_size = 8 * self.board_display.square_size
+        global_offset = (self.board_display.width() - board_size) / 2
+
+        if event.button() == Qt.RightButton and self.current_arrow is not None:
+            start, end = self.current_arrow
+            if start == end:
+                if start in self.user_circles:
+                    self.user_circles.remove(start)
+                else:
+                    self.user_circles.add(start)
+                self.board_display.user_circles = self.user_circles
+            else:
+                self.arrows.append(self.current_arrow)
+            self.current_arrow = None
+            self.arrow_start = None
+            self.board_display.repaint()
+            return
+
+        if self.dragging:
+            pos = event.localPos()
+            adjusted_pos = pos - QPointF(global_offset, global_offset)
+            if self.flipped:
+                file_idx = 7 - int(adjusted_pos.x() // self.board_display.square_size)
+                rank_idx = int(adjusted_pos.y() // self.board_display.square_size)
+            else:
+                file_idx = int(adjusted_pos.x() // self.board_display.square_size)
+                rank_idx = 7 - int(adjusted_pos.y() // self.board_display.square_size)
+            drop_square = chess.square(file_idx, rank_idx)
+            move = chess.Move(self.drag_start_square, drop_square)
+            if move in self.current_board.legal_moves:
+                self.current_board.push(move)
+                if self.is_live_game:
+                    if self.current_move_index < len(self.moves):
+                        self.moves = self.moves[:self.current_move_index]
+                        if hasattr(self, 'move_evaluations'):
+                            self.move_evaluations = self.move_evaluations[:self.current_move_index]
+                        if hasattr(self, 'move_evaluations_scores'):
+                            self.move_evaluations_scores = self.move_evaluations_scores[:self.current_move_index]
+                    self.moves.append(move)
+                    self.current_move_index += 1
+                    self.board_display.last_move_eval = None
+                    self.update_live_eval()
+                    self.check_game_over()
+                    if hasattr(self, 'computer_color') and self.current_board.turn == self.computer_color:
+                        self.make_computer_move()
+            self.dragging = False
+            self.drag_start_square = None
+            self.drag_current_pos = None
+            self.drag_offset = None
+            self.board_display.drag_info = {"dragging": False}
+            self.board_display.highlight_moves = []
+            self.update_display()
+        else:
+            super().mouseReleaseEvent(event)
+
 
     def update_live_eval(self):
         """
@@ -1078,82 +1253,24 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             self.black_moves = [self.move_evaluations_scores[i] for i in range(1, len(self.move_evaluations_scores), 2)]
             self.eval_graph.update_graph(self.white_moves, self.black_moves)
 
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.RightButton and self.current_arrow is not None:
-            start, end = self.current_arrow
-            if start == end:
-                if start in self.user_circles:
-                    self.user_circles.remove(start)
-                else:
-                    self.user_circles.add(start)
-                self.board_display.user_circles = self.user_circles
-            else:
-                self.arrows.append(self.current_arrow)
-            self.current_arrow = None
-            self.arrow_start = None
-            self.board_display.repaint()
-            return
-
-        if self.dragging:
-            pos = event.localPos()
-            if self.is_live_game is False:
-                pos = pos - QPointF(44, 169)
-            else:
-                pos = pos - QPointF(44, 169)
-            if self.flipped:
-                file_idx = 7 - int(pos.x() // self.square_size)
-                rank_idx = int(pos.y() // self.square_size)
-            else:
-                file_idx = int(pos.x() // self.square_size)
-                rank_idx = 7 - int(pos.y() // self.square_size)
-            drop_square = chess.square(file_idx, rank_idx)
-            move = chess.Move(self.drag_start_square, drop_square)
-            if move in self.current_board.legal_moves:
-                self.current_board.push(move)
-                if self.is_live_game:
-                    if self.current_move_index < len(self.moves):
-                        self.moves = self.moves[:self.current_move_index]
-                        if hasattr(self, 'move_evaluations'):
-                            self.move_evaluations = self.move_evaluations[:self.current_move_index]
-                        if hasattr(self, 'move_evaluations_scores'):
-                            self.move_evaluations_scores = self.move_evaluations_scores[:self.current_move_index]
-                    self.moves.append(move)
-                    self.current_move_index += 1
-                    self.board_display.last_move_eval = None
-                    self.update_live_eval()
-                    self.check_game_over()
-                    if hasattr(self, 'computer_color') and \
-                       self.current_board.turn == self.computer_color:
-                        self.make_computer_move()
-            self.dragging = False
-            self.drag_start_square = None
-            self.drag_current_pos = None
-            self.drag_offset = None
-            self.board_display.drag_info = {"dragging": False}
-            self.board_display.highlight_moves = []
-            self.update_display()
-        else:
-            super().mouseReleaseEvent(event)
-
     def get_piece_pixmap(self, piece):
-        """
-        @brief Retrieve the QPixmap for a given chess piece.
-        @param piece The chess piece.
-        @return Scaled QPixmap of the chess piece.
-        """
         prefix = "w" if piece.color == chess.WHITE else "b"
         letter = piece.symbol().upper()
         path = f"c:/Users/LPC/Documents/Programs/BoardMaster/piece_images/{prefix.lower()}{letter.lower()}.png"
         pixmap = QPixmap(path)
         if pixmap.isNull():
             print(f"Error: Failed to load image from {path}")
-            pixmap = QPixmap(self.square_size, self.square_size)
+            pixmap = QPixmap(self.board_display.square_size, self.board_display.square_size)
             pixmap.fill(Qt.transparent)
             painter = QPainter(pixmap)
             painter.setPen(Qt.black)
             painter.drawText(pixmap.rect(), Qt.AlignCenter, piece.symbol())
             painter.end()
-        return pixmap.scaled(self.square_size, self.square_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        # Use the current board_display square size
+        return pixmap.scaled(self.board_display.square_size,
+                            self.board_display.square_size,
+                            Qt.KeepAspectRatio,
+                            Qt.SmoothTransformation)
 
     def save_game_with_notes(self):
         """Save the game PGN with move notes."""

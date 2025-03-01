@@ -20,8 +20,8 @@ class BoardMaster(QMainWindow):
         """
         super().__init__()
         self.setWindowTitle("BoardMaster")
-        self.setGeometry(100, 100, 1600, 1000)
-        self.setFixedSize(1600, 1000)
+        self.setGeometry(100, 100, 1700, 900)
+        # self.setFixedSize(1600, 1000)
         self.setWindowIcon(QIcon("./img/king.ico"))
 
         self.settings = QSettings("BoardMaster", "BoardMaster")
@@ -95,7 +95,7 @@ class BoardMaster(QMainWindow):
         """
         menubar = self.menuBar()
 
-        file_menu = menubar.addMenu("&File")
+        file_menu = menubar.addMenu("File")
         open_pgn = QAction("Open PGN File", self)
         open_pgn.setShortcut(QKeySequence("Ctrl+O"))
         open_pgn.triggered.connect(self.open_pgn_file)

@@ -147,6 +147,12 @@ class SettingsDialog(QDialog):
         )
         layout.addWidget(self.show_arrows)
 
+        self.arrow_move_toggle = QCheckBox("Show arrows for move ahead")
+        self.arrow_move_toggle.setChecked(
+            self.settings.value("display/arrow_move", True, bool)
+        )
+        layout.addWidget(self.arrow_move_toggle)
+
         save_button = QPushButton("Save")
         save_button.clicked.connect(self.save_settings)
         layout.addWidget(save_button)
@@ -182,6 +188,7 @@ class SettingsDialog(QDialog):
         """
         self.settings.setValue("engine/depth", self.depth_spin.value())
         self.settings.setValue("display/show_arrows", self.show_arrows.isChecked())
+        self.settings.setValue("display/arrow_move", self.arrow_move_toggle.isChecked())
         self.settings.setValue("engine/lines", self.arrows_spin.value())
         self.settings.setValue("analysis/postime", self.seconds_input.value())
         self.settings.setValue("analysis/fulltime", self.seconds_input2.value())
