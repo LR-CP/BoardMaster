@@ -15,3 +15,5 @@ engine_test.py
 web/
 docs/html/
 docs/latex/
+.vscode/
+*parquet

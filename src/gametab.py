@@ -105,7 +105,7 @@ class CustomSVGWidget(QSvgWidget):
         # Draw square overlays
         for square, color in self.squares.items():
             # purple rect fill
-            rect = get_square_rect(square) #TODO: Without doing it this way the svg icons do not show
+            rect = get_square_rect(square) #BUG: Without doing it this way the svg icons do not show
             painter.fillRect(rect, color)
             
             # Dots in corners
@@ -124,6 +124,7 @@ class CustomSVGWidget(QSvgWidget):
             # painter.drawEllipse(rect.bottomLeft(), marker_size, marker_size)
             # # Bottom-right corner
             # painter.drawEllipse(rect.bottomRight(), marker_size, marker_size)
+
             # Gradient squares
             # rect = get_square_rect(square)
             # center = rect.center()
@@ -139,8 +140,20 @@ class CustomSVGWidget(QSvgWidget):
             painter.setFont(QFont('Segoe UI Symbol', int(self.square_size / 3)))
             last_move = self.last_move_eval['move']
             eval_symbol = self.last_move_eval['symbol']
+            if eval_symbol == '✅':
+                painter.setPen(QColor("green"))
+            elif eval_symbol == '👍':
+                painter.setPen(QColor("yellow"))
+            elif eval_symbol == '⚠️':
+                painter.setPen(QColor("yellow"))
+            elif eval_symbol == '❌':
+                painter.setPen(QColor("red"))
+            elif eval_symbol == '🔥':
+                painter.setPen(QColor("orange"))
+            
             rect = get_square_rect(last_move.to_square)
-            painter.drawText(rect, Qt.AlignCenter, eval_symbol)
+            alignment = Qt.AlignRight | Qt.AlignTop
+            painter.drawText(rect, alignment, eval_symbol)
 
         # Draw highlighted circles for legal moves
         if self.highlight_moves:
@@ -462,7 +475,7 @@ class GameTab(QWidget):
         self.progress.setValue(1)
         return self.progress
 
-    def load_pgn(self, pgn_string):
+    def load_pgn(self, pgn_string, is_analysis=False):
         """
         Load a PGN game from a provided PGN string.
         Returns True if loaded successfully; otherwise False.
@@ -479,12 +492,23 @@ class GameTab(QWidget):
                 return False
             # Save headers from the loaded game.
             self.hdrs = self.current_game.headers
-            self.game_details.setText(
-                f"White: {self.hdrs.get('White')}({self.hdrs.get('WhiteElo')})\n"
-                f"Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})\n"
-                f"{self.hdrs.get('Date')}\nResult: {self.hdrs.get('Termination')}\n\n"
-                f"Opening: {self.hdrs.get('Opening')}"
-            )
+            game_detail_text = f"""
+White: {self.hdrs.get('White')}({self.hdrs.get('WhiteElo')})
+Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})
+{self.hdrs.get('Date')}\nResult: {self.hdrs.get('Termination')}
+"""
+            #             game_detail_text_no_opening = f"""
+# White: {self.hdrs.get('White')}({self.hdrs.get('WhiteElo')})
+# Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})
+# {self.hdrs.get('Date')}\nResult: {self.hdrs.get('Termination')}
+
+
+#             """
+            # if self.hdrs["Opening"] is None or is_analysis == True:
+            #     self.game_details.setText(game_detail_text_no_opening)
+            # else:
+            self.game_details.setText(game_detail_text)
+
         except Exception as e:
             print(f"Error loading game: {str(e)}")
             return False
@@ -760,8 +784,14 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
 
         if self.current_move_index > 0 and self.moves:
             last_move = self.moves[self.current_move_index - 1]
-            squares[last_move.to_square] = QColor(128, 0, 128, 100)
-            squares[last_move.from_square] = QColor(128, 0, 128, 100)
+            # squares[last_move.to_square] = QColor(128, 0, 128, 100)
+            # squares[last_move.from_square] = QColor(128, 0, 128, 100)
+            prev_move_color = QColor(128, 0, 128, 100)
+            arrows.append(chess.svg.Arrow(
+                tail=last_move.from_square,
+                head=last_move.to_square,
+                color=prev_move_color.name()
+            ))
 
         if self.current_board.is_check():
             king_square = self.current_board.king(self.current_board.turn)
@@ -830,8 +860,8 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 opening_name = self.opening['name']
                 opening_eco = self.opening['eco']
                 self.opening_label.setText(f"Opening: {opening_name} ({opening_eco})")
-            else:
-                self.opening_label.setText("Opening: Unknown")
+            # else:
+            #     self.opening_label.setText("Opening: Unknown")
 
         # Always update the move list regardless of game type
         self.move_list.clear()

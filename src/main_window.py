@@ -317,7 +317,7 @@ class BoardMaster(QMainWindow):
             self.tab_widget.setCurrentIndex(curr_tab_index)
             
             pgn_string = analysis_data.get("pgn", "")
-            if not self.new_tab.load_pgn(pgn_string):
+            if not self.new_tab.load_pgn(pgn_string, is_analysis=True):
                 QMessageBox.critical(self, "Load Failed", "Failed to load the game from the analysis file.")
                 return
 
