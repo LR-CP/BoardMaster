@@ -7,9 +7,8 @@ import subprocess
 from PySide6.QtWidgets import *
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QAction, QIcon, QKeySequence
-import sys
 from interactive_board import BoardEditor
-from gametab import GameTab, OPENINGS_DB, OPENINGS_LOADED_FLAG, load_openings
+from gametab import GameTab
 from dialogs import *
 
 class BoardMaster(QMainWindow):

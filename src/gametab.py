@@ -4,7 +4,7 @@ import chess.engine
 import chess.svg
 import io
 from datasets import load_dataset
-import pandas as pd
+import polars as pl
 import re
 from PySide6.QtWidgets import *
 from PySide6.QtSvgWidgets import QSvgWidget
@@ -12,31 +12,7 @@ from PySide6.QtCore import QByteArray, QSettings, Qt, QPointF, QRectF
 from PySide6.QtGui import QPainter, QColor, QPixmap, QPen, QFont, QRadialGradient, QBrush
 import math
 from utils import MoveRow, EvaluationGraphPG
-from dialogs import LoadingDialog, OpeningSearchDialog
-
-OPENINGS_LOADED_FLAG = False
-
-def clean_pgn_moves(pgn_str):
-        """Remove move numbers and periods from a PGN string."""
-        tokens = pgn_str.split()
-        moves = [token for token in tokens if not re.match(r"^\d+\.$", token)]
-        return " ".join(moves)
-
-def load_openings():
-    # Load the dataset (adjust the dataset name and split as needed)
-    df = pd.read_parquet("hf://datasets/Lichess/chess-openings/data/train-00000-of-00001.parquet")
-
-    # We assume the dataset has a 'pgn' column.
-    df["pgn"] = df["pgn"].astype(str)
-    df["clean_moves"] = df["pgn"].apply(clean_pgn_moves)
-    df["move_count"] = df["clean_moves"].apply(lambda s: len(s.split()))
-    # Sort by move count descending (optional but helps if you want to iterate in order)
-    df.sort_values("move_count", ascending=False, inplace=True)
-    
-    return df.to_dict(orient='records')
-
-OPENINGS_DB = load_openings()
-
+from dialogs import LoadingDialog, clean_pgn_moves, load_openings, OPENINGS_DB, OPENINGS_LOADED_FLAG
 
 class CustomSVGWidget(QSvgWidget):
     def __init__(self, parent=None):

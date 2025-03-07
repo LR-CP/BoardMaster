@@ -2,10 +2,12 @@ from PySide6.QtWidgets import *
 from PySide6.QtCore import QSettings, Qt, QStringListModel
 from PySide6.QtGui import QIcon, QPalette, QColor
 import os
-import re
 import chess.pgn
 import io
-import pandas as pd
+import re
+import polars as pl
+
+OPENINGS_LOADED_FLAG = False
 
 def clean_pgn_moves(pgn_str):
         """Remove move numbers and periods from a PGN string."""
@@ -14,18 +16,30 @@ def clean_pgn_moves(pgn_str):
         return " ".join(moves)
 
 def load_openings():
-    # Load the dataset (adjust the dataset name and split as needed)
-    df = pd.read_parquet("hf://datasets/Lichess/chess-openings/data/train-00000-of-00001.parquet")
-
-    # We assume the dataset has a 'pgn' column.
-    df["pgn"] = df["pgn"].astype(str)
-    df["clean_moves"] = df["pgn"].apply(clean_pgn_moves)
-    df["move_count"] = df["clean_moves"].apply(lambda s: len(s.split()))
-    # Sort by move count descending (optional but helps if you want to iterate in order)
-    df.sort_values("move_count", ascending=False, inplace=True)
+    # Load the dataset using polars
+    df = pl.read_parquet("hf://datasets/Lichess/chess-openings/data/train-00000-of-00001.parquet")
     
-    return df.to_dict(orient='records')
+    # Convert pgn column to string type
+    df = df.with_columns(pl.col("pgn").cast(pl.Utf8))
+    
+    # Apply clean_pgn_moves to create clean_moves column
+    # Use map instead of apply for expressions
+    df = df.with_columns(
+        pl.col("pgn").map_elements(clean_pgn_moves, return_dtype=str).alias("clean_moves")
+    )
+    
+    # Count moves by splitting on whitespace
+    df = df.with_columns(
+        pl.col("clean_moves").map_elements(lambda s: len(s.split()), return_dtype=int).alias("move_count")
+    )
+    
+    # Sort by move count descending
+    df = df.sort("move_count", descending=True)
+    
+    # Convert to dict format that matches pandas to_dict(orient='records')
+    return df.to_dicts()
 
+OPENINGS_DB = load_openings()
 
 class HelpDialog(QDialog):
     def __init__(self, parent=None):
@@ -548,9 +562,12 @@ class OpeningSearchDialog(QDialog):
         
         try:
             progress.setValue(10)
+            QApplication.processEvents()
             # Use the load_openings function (assumed to be defined elsewhere)
             self.openings_data = load_openings()
+            QApplication.processEvents()
             progress.setValue(50)
+            QApplication.processEvents()
         except Exception as e:
             progress.cancel()
             print(f"Error loading openings: {e}")
