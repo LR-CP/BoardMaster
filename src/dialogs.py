@@ -1,9 +1,30 @@
 from PySide6.QtWidgets import *
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QSettings, Qt, QStringListModel
 from PySide6.QtGui import QIcon, QPalette, QColor
 import os
+import re
 import chess.pgn
 import io
+import pandas as pd
+
+def clean_pgn_moves(pgn_str):
+        """Remove move numbers and periods from a PGN string."""
+        tokens = pgn_str.split()
+        moves = [token for token in tokens if not re.match(r"^\d+\.$", token)]
+        return " ".join(moves)
+
+def load_openings():
+    # Load the dataset (adjust the dataset name and split as needed)
+    df = pd.read_parquet("hf://datasets/Lichess/chess-openings/data/train-00000-of-00001.parquet")
+
+    # We assume the dataset has a 'pgn' column.
+    df["pgn"] = df["pgn"].astype(str)
+    df["clean_moves"] = df["pgn"].apply(clean_pgn_moves)
+    df["move_count"] = df["clean_moves"].apply(lambda s: len(s.split()))
+    # Sort by move count descending (optional but helps if you want to iterate in order)
+    df.sort_values("move_count", ascending=False, inplace=True)
+    
+    return df.to_dict(orient='records')
 
 
 class HelpDialog(QDialog):
@@ -469,3 +490,205 @@ class LoadingDialog(QDialog):
         self.setLayout(layout)
         self.setModal(True)  # This blocks interaction with other windows if needed
         self.setFixedSize(300, 100)
+
+class OpeningSearchDialog(QDialog):
+    def __init__(self, game_tab, parent=None):
+        super().__init__(parent)
+        self.game_tab = game_tab
+        self.setWindowTitle("Load Opening")
+        self.setWindowIcon(QIcon("./img/king.ico"))
+        self.openings_data = []
+        self.opening_names = []
+        
+        self.setWindowTitle("Opening Search")
+        self.setMinimumWidth(500)
+        self.setMinimumHeight(400)  # Ensure enough space for the list
+        
+        # Create layout
+        layout = QVBoxLayout(self)
+        
+        # Search field
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(QLabel("Search Opening:"))
+        self.search_field = QLineEdit()
+        self.search_field.setMinimumWidth(300)
+        search_layout.addWidget(self.search_field)
+        layout.addLayout(search_layout)
+        
+        # Results list
+        self.results_list = QListWidget()
+        self.results_list.setMinimumHeight(200)
+        self.results_list.setSelectionMode(QAbstractItemView.SingleSelection)
+        layout.addWidget(QLabel("Matching Openings:"))
+        layout.addWidget(self.results_list)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        cancel_button = QPushButton("Cancel")
+        load_button = QPushButton("Load Opening")
+        button_layout.addWidget(cancel_button)
+        button_layout.addWidget(load_button)
+        layout.addLayout(button_layout)
+        
+        # Connect signals
+        cancel_button.clicked.connect(self.reject)
+        load_button.clicked.connect(self.load_selected_opening)
+        self.search_field.textEdited.connect(self.filter_openings)  # Changed from textChanged
+        self.results_list.itemDoubleClicked.connect(self.on_item_double_clicked)
+        
+        # Initialize openings data and completer
+        self.initialize_openings()
+    
+    def initialize_openings(self):
+        """Load openings data and set up the completer."""
+        progress = QProgressDialog("Loading openings data...", "Cancel", 0, 100, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        QApplication.processEvents()
+        
+        try:
+            progress.setValue(10)
+            # Use the load_openings function (assumed to be defined elsewhere)
+            self.openings_data = load_openings()
+            progress.setValue(50)
+        except Exception as e:
+            progress.cancel()
+            print(f"Error loading openings: {e}")
+            self.openings_data = []
+        
+        # Process opening data
+        if self.openings_data:
+            self.combined_search = []
+            for opening in self.openings_data:
+                if "name" in opening and "eco" in opening:
+                    self.combined_search.append(f"{opening['eco']} - {opening['name']}")
+                    self.opening_names.append(opening["name"])
+            
+            # Populate the initial list
+            self.results_list.addItems(self.combined_search)
+            
+            # Set up the proper completer with visible popup
+            self.setup_completer()
+            
+            progress.setValue(100)
+    
+    def setup_completer(self):
+        """Set up a completer with a visible dropdown."""
+        # Create completer with the list of openings
+        self.completer = QCompleter(self.combined_search)
+        
+        # Important settings for visibility
+        # self.completer.setCompletionMode(QCompleter.PopupCompletion)
+        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.completer.setFilterMode(Qt.MatchContains)
+        
+        # Get and style the popup
+        # popup = self.completer.popup()
+        # popup.setMinimumHeight(200)
+        # popup.setMinimumWidth(400)
+        
+        # Important: Explicit styling to make sure it's visible
+        # popup.setStyleSheet("""
+        #     QListView {
+        #         border: 2px solid darkgray;
+        #         border-radius: 3px;
+        #         background-color: white;
+        #         selection-background-color: lightblue;
+        #     }
+        #     QListView::item {
+        #         padding: 4px;
+        #     }
+        #     QListView::item:selected {
+        #         background-color: #4a90e2;
+        #         color: white;
+        #     }
+        # """)
+        
+        # Set the completer on the line edit
+        self.search_field.setCompleter(self.completer)
+        
+        # Connect completer signals
+        self.completer.activated.connect(self.on_completer_activated)
+    
+    def filter_openings(self, text):
+        """Filter both the list widget and ensure the completer shows."""
+        # Update the list widget
+        self.results_list.clear()
+        
+        if not text:
+            self.results_list.addItems(self.combined_search)
+        else:
+            filtered_items = [item for item in self.combined_search 
+                            if text.lower() in item.lower()]
+            self.results_list.addItems(filtered_items)
+        
+        # Force the completer to show its popup
+        # This is crucial - manually complete() and update the prefix
+        if text and len(text) > 1:
+            rect = self.search_field.rect()
+            self.completer.setCompletionPrefix(text)
+            self.completer.complete(rect)  # Important: pass the rect to show at the right position
+    
+    def on_completer_activated(self, text):
+        """Handle when a suggestion is selected from the completer."""
+        # Set the text in the search field and update the list
+        self.search_field.setText(text)
+        self.filter_openings(text)
+        
+        # Also select this item in the results list if present
+        items = self.results_list.findItems(text, Qt.MatchExactly)
+        if items:
+            self.results_list.setCurrentItem(items[0])
+    
+    def on_item_double_clicked(self, item):
+        """Handle double click on an item in the results list."""
+        self.search_field.setText(item.text())
+        self.load_selected_opening()
+    
+    def load_selected_opening(self):
+        """Load the selected opening into the game tab."""
+        # First check if something is selected in the results list
+        selected_items = self.results_list.selectedItems()
+        if selected_items:
+            search_text = selected_items[0].text()
+        else:
+            search_text = self.search_field.text()
+        
+        # Find the opening
+        selected_opening = None
+        for opening in self.openings_data:
+            if "eco" in opening and "name" in opening:
+                combined = f"{opening['eco']} - {opening['name']}"
+                if combined == search_text or opening["name"] in search_text or opening["eco"] in search_text:
+                    selected_opening = opening
+                    break
+        
+        if selected_opening:
+            # Load the opening into the game tab
+            # self.game_tab.load_opening(selected_opening)
+            self.selected_opening = selected_opening
+            self.accept()
+        else:
+            # Show error dialog
+            QMessageBox.warning(self, "Opening Not Found", 
+                              "The selected opening could not be found in the database.",
+                              QMessageBox.Ok)
+
+# def clean_pgn_moves(pgn_str):
+#         """Remove move numbers and periods from a PGN string."""
+#         tokens = pgn_str.split()
+#         moves = [token for token in tokens if not re.match(r"^\d+\.$", token)]
+#         return " ".join(moves)
+
+# def load_openings():
+#     # Load the dataset (adjust the dataset name and split as needed)
+#     df = pd.read_parquet("hf://datasets/Lichess/chess-openings/data/train-00000-of-00001.parquet")
+
+#     # We assume the dataset has a 'pgn' column.
+#     df["pgn"] = df["pgn"].astype(str)
+#     df["clean_moves"] = df["pgn"].apply(clean_pgn_moves)
+#     df["move_count"] = df["clean_moves"].apply(lambda s: len(s.split()))
+#     # Sort by move count descending (optional but helps if you want to iterate in order)
+#     df.sort_values("move_count", ascending=False, inplace=True)
+    
+#     return df.to_dict(orient='records')

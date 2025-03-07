@@ -12,7 +12,7 @@ from PySide6.QtCore import QByteArray, QSettings, Qt, QPointF, QRectF
 from PySide6.QtGui import QPainter, QColor, QPixmap, QPen, QFont, QRadialGradient, QBrush
 import math
 from utils import MoveRow, EvaluationGraphPG
-from dialogs import LoadingDialog
+from dialogs import LoadingDialog, OpeningSearchDialog
 
 OPENINGS_LOADED_FLAG = False
 
@@ -483,6 +483,7 @@ class GameTab(QWidget):
                 f"White: {self.hdrs.get('White')}({self.hdrs.get('WhiteElo')})\n"
                 f"Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})\n"
                 f"{self.hdrs.get('Date')}\nResult: {self.hdrs.get('Termination')}\n\n"
+                f"Opening: {self.hdrs.get('Opening')}"
             )
         except Exception as e:
             print(f"Error loading game: {str(e)}")
@@ -1529,3 +1530,95 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 best_length = move_count
 
         return best_opening
+
+    # # This method updates the move display with the current move list
+    # def update_move_display(self):
+    #     """Update the move list display with the current moves."""
+    #     # Clear current move display
+    #     if hasattr(self, 'move_display'):
+    #         # Clear all items from the layout
+    #         while self.move_display.layout().count():
+    #             item = self.move_display.layout().takeAt(0)
+    #             if item.widget():
+    #                 item.widget().deleteLater()
+    #     else:
+    #         # Create move display widget if it doesn't exist
+    #         return
+        
+    #     # Return if no moves
+    #     if not self.moves:
+    #         print("No moves")
+    #         return
+        
+    #     # Recreate board to generate SAN moves
+    #     temp_board = chess.Board()
+        
+    #     # Add move rows for each pair of moves
+    #     move_number = 1
+    #     move_index = 0
+        
+    #     while move_index < len(self.moves):
+    #         # White's move
+    #         white_move = temp_board.san(self.moves[move_index])
+    #         white_eval = ""  # You might want to add evaluation here if available
+    #         white_idx = move_index
+    #         move_index += 1
+    #         temp_board.push(self.moves[white_idx])
+            
+    #         # Black's move (if exists)
+    #         black_move = None
+    #         black_eval = ""
+    #         black_idx = None
+    #         if move_index < len(self.moves):
+    #             black_move = temp_board.san(self.moves[move_index])
+    #             black_eval = ""  # Evaluation for black
+    #             black_idx = move_index
+    #             move_index += 1
+    #             temp_board.push(self.moves[black_idx])
+            
+    #         # Create move row
+    #         move_row = MoveRow(
+    #             move_number, white_move, white_eval, white_idx, self,
+    #             black_move, black_eval, black_idx
+    #         )
+            
+    #         # Add notes if they exist
+    #         if hasattr(self, 'move_notes'):
+    #             if white_idx in self.move_notes:
+    #                 move_row.white_label.note = self.move_notes[white_idx]
+    #                 move_row.white_label.update_style()
+    #                 move_row.white_label.update_tooltip()
+                
+    #             if black_idx is not None and black_idx in self.move_notes:
+    #                 move_row.black_label.note = self.move_notes[black_idx]
+    #                 move_row.black_label.update_style()
+    #                 move_row.black_label.update_tooltip()
+            
+    #         # Add row to move display
+    #         self.move_display.layout().addWidget(move_row)
+    #         move_number += 1
+        
+    #     # Highlight current move
+    #     self.highlight_current_move()
+
+
+    # # Reset game method
+    # def reset_game(self):
+    #     """Reset the game to starting position."""
+    #     self.current_board = chess.Board()
+    #     self.moves = []
+    #     self.current_move_index = 0
+    #     self.move_notes = {}
+    #     self.move_evaluations = []
+    #     if hasattr(self, 'opening'):
+    #         self.opening = None
+        
+    #     # Clear the move display
+    #     if hasattr(self, 'move_display'):
+    #         while self.move_display.layout().count():
+    #             item = self.move_display.layout().takeAt(0)
+    #             if item.widget():
+    #                 item.widget().deleteLater()
+        
+    #     # Update the board display
+    #     self.update_display()

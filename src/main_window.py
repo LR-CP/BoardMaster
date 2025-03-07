@@ -118,6 +118,11 @@ class BoardMaster(QMainWindow):
         export_pgn_action.triggered.connect(lambda: self.export_pgn(analysis=False))
         tool_menu.addAction(export_pgn_action)
 
+        load_opening_action = QAction("Load Opening", self)
+        load_opening_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        load_opening_action.triggered.connect(self.show_opening_dialog)
+        tool_menu.addAction(load_opening_action)
+
         settings_menu = menubar.addMenu("&Settings")
         open_settings = QAction("Engine Settings", self)
         open_settings.setShortcut(QKeySequence("Ctrl+Shift+P"))
@@ -190,6 +195,77 @@ class BoardMaster(QMainWindow):
         """
         splitter = PGNSplitterDialog(self)
         splitter.exec()
+
+    def show_opening_dialog(self):
+        """Show the opening search dialog."""
+        new_tab = GameTab(self)
+        dialog = OpeningSearchDialog(game_tab=new_tab)
+        # opening = dialog.load_selected_opening()
+        if dialog.exec_() == QDialog.Accepted:
+            self.load_opening(dialog.selected_opening)
+            # Opening was loaded in the dialog's load_selected_opening method
+            pass
+    
+    def load_opening(self, opening_data):
+        """
+        Load an opening position by converting the provided pgn_text into a complete PGN
+        (with headers) and then loading it using load_pgn.
+        
+        Args:
+            opening_data (dict): Opening data from the Lichess dataset.
+        """
+        # Reset the game state.
+        # self.reset_game()
+        
+        # Set up custom headers.
+        self.hdrs = {
+            "Event": "Opening Study",
+            "Site": "Chess Analysis App",
+            "Date": "????.??.??",
+            "Round": "?",
+            "White": "?",
+            "Black": "?"
+        }
+        if "eco" in opening_data:
+            self.hdrs["ECO"] = opening_data["eco"]
+        if "name" in opening_data:
+            self.hdrs["Opening"] = opening_data["name"]
+        
+        # Get the PGN text from the opening data.
+        pgn_text = opening_data.get("pgn", "")
+        if not pgn_text:
+            print("No PGN data provided in the opening.")
+            return
+        
+        # Create a new PGN game and add headers.
+        game = chess.pgn.Game()
+        for key, value in self.hdrs.items():
+            game.headers[key] = value
+
+        # Parse the moves from the provided PGN text.
+        pgn_io = io.StringIO(pgn_text)
+        parsed_game = chess.pgn.read_game(pgn_io)
+        if parsed_game is None:
+            print("Failed to parse PGN moves from provided text.")
+            return
+
+        # Add the moves from the parsed game into our new game.
+        node = game
+        for move in parsed_game.mainline_moves():
+            node = node.add_main_variation(move)
+
+        # Convert the game to a full PGN string.
+        full_pgn = str(game)
+        print("Constructed PGN:\n", full_pgn)
+
+        # Now load the PGN using your load_pgn method.
+        
+        self.pgn_text.setText(full_pgn)
+        self.load_game(self.hdrs["Opening"])
+
+        # Update the window title if applicable.
+        # if hasattr(self, 'parent') and hasattr(self.parent(), 'setWindowTitle'):
+        #     self.parent().setWindowTitle(f"Opening Study: {opening_data.get('name', 'Unknown')}")
     
     def export_pgn(self, analysis=False):
         """
@@ -279,6 +355,7 @@ class BoardMaster(QMainWindow):
         self.lg_ctr += 1
         new_tab = GameTab(self)
         new_tab.is_live_game = True
+        new_tab.game_details.setText("\n\n\n\n\n") # Dumb fix for board resizing bug on live game
         self.tab_widget.addTab(new_tab, f"Live Game {self.lg_ctr}")
 
     def open_interactive_board(self):
@@ -299,14 +376,17 @@ class BoardMaster(QMainWindow):
                                              )
         self.interactive_board.show()
 
-    def load_game(self):
+    def load_game(self, opening=None):
         """
         @brief Load a game from the PGN text input.
         """
         pgn_string = self.pgn_text.toPlainText()
         self.new_tab = GameTab(self)
-        if self.new_tab.load_pgn(pgn_string):
+        if opening is None and self.new_tab.load_pgn(pgn_string):
             self.tab_widget.addTab(self.new_tab, f"{self.new_tab.hdrs.get("White")}_{self.new_tab.hdrs.get("Black")}_{self.new_tab.hdrs.get("Date").replace(".", "_")}")
+            self.tab_widget.setCurrentWidget(self.new_tab)
+        elif opening is not None and self.new_tab.load_pgn(pgn_string):
+            self.tab_widget.addTab(self.new_tab, f"{opening}_Review")
             self.tab_widget.setCurrentWidget(self.new_tab)
 
     def analyze_position(self, board):
