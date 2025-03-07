@@ -9,7 +9,7 @@ from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QAction, QIcon, QKeySequence
 import sys
 from interactive_board import BoardEditor
-from gametab import GameTab
+from gametab import GameTab, OPENINGS_DB, OPENINGS_LOADED_FLAG, load_openings
 from dialogs import *
 
 class BoardMaster(QMainWindow):
@@ -21,7 +21,6 @@ class BoardMaster(QMainWindow):
         super().__init__()
         self.setWindowTitle("BoardMaster")
         self.setGeometry(100, 100, 1700, 900)
-        # self.setFixedSize(1600, 1000)
         self.setWindowIcon(QIcon("./img/king.ico"))
 
         self.settings = QSettings("BoardMaster", "BoardMaster")
@@ -30,6 +29,16 @@ class BoardMaster(QMainWindow):
         if not self.engine:
             return
 
+        global OPENINGS_LOADED_FLAG
+        global OPENINGS_DB
+        if OPENINGS_LOADED_FLAG is False and self.settings.value("game/load_openings", True, bool):
+            dialog = LoadingDialog()
+            dialog.show()
+            QApplication.processEvents()
+            load_openings()
+            QApplication.processEvents()
+            dialog.accept()
+            
         self.create_gui()
         self.create_menus()
 
@@ -67,27 +76,6 @@ class BoardMaster(QMainWindow):
         central_widget = QWidget()
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
-
-        # pgn_dock.setWidget(pgn_widget)
-        # self.addDockWidget(Qt.RightDockWidgetArea, pgn_dock)
-
-        # # NEW: Create dock widgets for move list, analysis, and evaluation graph extracted from GameTab
-        # self.move_dock = QDockWidget("Move List", self)
-        # self.move_dock.setAllowedAreas(Qt.RightDockWidgetArea)
-        # self.move_dock.setWidget(self.new_tab.move_list)
-        # self.addDockWidget(Qt.RightDockWidgetArea, self.move_dock)
-        
-        # self.analysis_dock = QDockWidget("Analysis", self)
-        # self.analysis_dock.setAllowedAreas(Qt.RightDockWidgetArea)
-        # self.analysis_dock.setWidget(self.new_tab.analysis_text)
-        # self.addDockWidget(Qt.RightDockWidgetArea, self.analysis_dock)
-        # # Tabify move list and analysis docks together
-        # self.tabifyDockWidget(self.move_dock, self.analysis_dock)
-        
-        # self.eval_dock = QDockWidget("Game Evaluation", self)
-        # self.eval_dock.setAllowedAreas(Qt.BottomDockWidgetArea)
-        # self.eval_dock.setWidget(self.new_tab.eval_graph)
-        # self.addDockWidget(Qt.BottomDockWidgetArea, self.eval_dock)
 
     def create_menus(self):
         """
@@ -290,6 +278,7 @@ class BoardMaster(QMainWindow):
     def start_live_game(self):
         self.lg_ctr += 1
         new_tab = GameTab(self)
+        new_tab.is_live_game = True
         self.tab_widget.addTab(new_tab, f"Live Game {self.lg_ctr}")
 
     def open_interactive_board(self):

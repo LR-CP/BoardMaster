@@ -688,10 +688,18 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                     previous_board.push(move)
             else:
                 previous_board = self.current_board
+        else:
+            # Handle live game previous position
+            previous_board = chess.Board()
+            if self.current_move_index > 0:
+                for move in self.moves[:self.current_move_index - 1]:
+                    previous_board.push(move)
+            else:
+                previous_board = chess.Board()  # Start position for live game
 
         if not self.current_board.is_game_over() and self.settings.value("display/show_arrows", True, bool):
             # Analyze the previous position (not the current one) to show what you could have played
-            if not self.settings.value("display/arrow_move", True, bool):
+            if not self.settings.value("display/arrow_move", True, bool) and self.is_live_game == False:
                 info = self.engine.analyse(
                     previous_board,  # Use previous_board here
                     chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)),
@@ -699,7 +707,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 )
             else:
                 info = self.engine.analyse(
-                    self.current_board,  # Use previous_board here
+                    self.current_board,
                     chess.engine.Limit(time=self.settings.value("analysis/postime", 0.1, float)),
                     multipv=self.settings.value("engine/lines", 3, int)
                 )
@@ -709,13 +717,16 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
 
             analysis_text = f"Move {(self.current_move_index + 1) // 2} "
             analysis_text += f"({'White' if self.current_move_index % 2 == 0 else 'Black'})\n\n"
-            analysis_text += "Top moves (previous position):\n"
+            analysis_text += "Top moves:\n"
 
             for i, pv in enumerate(info, 0):
                 if "pv" in pv.keys():
                     move = pv["pv"][0]
                     score = self.eval_to_cp(pv["score"].relative) if hasattr(self, 'eval_to_cp') else 0
-                    analysis_text += f"{i+1}. {previous_board.san(move)} (eval: {score/100:+.2f})\n"
+                    if self.is_live_game == False:
+                        analysis_text += f"{i+1}. {previous_board.san(move)} (eval: {score/100:+.2f})\n"
+                    else:
+                        analysis_text += f"{i+1}. {self.current_board.san(move)} (eval: {score/100:+.2f})\n"
 
                     color = QColor("#00ff00") if i <= 0 else QColor("#007000")
 
@@ -800,13 +811,10 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         )
         self.fen_box.setText(f"FEN: {self.current_board.fen()}")
 
-        self.move_list.clear()
-        temp_board = chess.Board()
-        move_number = 1
-        i = 0
-
+        # Process opening detection for live games
+        global OPENINGS_LOADED_FLAG
         if self.is_live_game == True:
-            if OPENINGS_LOADED_FLAG == False:
+            if not OPENINGS_LOADED_FLAG:
                 dialog = LoadingDialog()
                 dialog.show()
                 QApplication.processEvents()
@@ -814,13 +822,21 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 QApplication.processEvents()
                 dialog.accept()
                 OPENINGS_LOADED_FLAG = True
-            opening = self.get_opening_from_moves(self.current_board)
-            opening_name = self.opening['name']
-            opening_eco = self.opening['eco']
-            if opening:
+            
+            # Get opening for the current game state
+            self.opening = self.get_opening_from_moves(self.moves[:self.current_move_index])
+            if self.opening and 'name' in self.opening and 'eco' in self.opening:
+                opening_name = self.opening['name']
+                opening_eco = self.opening['eco']
                 self.opening_label.setText(f"Opening: {opening_name} ({opening_eco})")
             else:
                 self.opening_label.setText("Opening: Unknown")
+
+        # Always update the move list regardless of game type
+        self.move_list.clear()
+        temp_board = chess.Board()
+        move_number = 1
+        i = 0
         
         while i < len(self.moves):
             white_move = temp_board.san(self.moves[i])
@@ -981,29 +997,59 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             for key, value in self.hdrs.items():
                 game.headers[key] = value
 
-        # Fix the Termination/Result header
+        # Fix the Termination/Result header and ensure Result is set
         if "Termination" in game.headers:
             game.headers["Result"] = game.headers.pop("Termination", "*")
+        elif "Result" not in game.headers:
+            # Set default result if not present
+            result = "*"
+            if self.current_board.is_checkmate():
+                result = "1-0" if self.current_board.turn == chess.BLACK else "0-1"
+            elif self.current_board.is_stalemate() or self.current_board.is_insufficient_material():
+                result = "1/2-1/2"
+            game.headers["Result"] = result
 
         # Rebuild the mainline moves
         node = game
-        for move in self.moves:
+
+        # Ensure we're using all moves up to current_move_index for live games
+        moves_to_export = self.moves[:self.current_move_index] if self.is_live_game else self.moves
+        
+        for move in moves_to_export:
             node = node.add_main_variation(move)
+            
+            # Add move evaluations as comments if available
+            if hasattr(self, 'move_evaluations') and len(self.move_evaluations) > 0:
+                index = moves_to_export.index(move)
+                if index < len(self.move_evaluations) and self.move_evaluations[index]:
+                    node.comment = f"Eval: {self.move_evaluations[index]}"
+            
+            # Add move notes if available
+            if hasattr(self, 'move_notes') and index in self.move_notes:
+                if node.comment:
+                    node.comment += f" | Note: {self.move_notes[index]}"
+                else:
+                    node.comment = f"Note: {self.move_notes[index]}"
+
+        # If there's opening information, add it as a comment to the first move
+        if hasattr(self, 'opening') and self.opening and 'name' in self.opening and 'eco' in self.opening:
+            first_node = game.variations[0] if game.variations else None
+            if first_node:
+                opening_comment = f"Opening: {self.opening['name']} ({self.opening['eco']})"
+                if first_node.comment:
+                    first_node.comment = opening_comment + " | " + first_node.comment
+                else:
+                    first_node.comment = opening_comment
 
         # Convert game to PGN string
         pgn_text = str(game)
 
         # Create a filename
-        filename = (
-            f"{game.headers.get('White', 'White')}_"
-            f"{game.headers.get('Black', 'Black')}_"
-            f"{game.headers.get('Date', 'Unknown').replace('.', '_')}.pgn"
-        )
-        json_filename = (
-            f"{game.headers.get('White', 'White')}_"
-            f"{game.headers.get('Black', 'Black')}_"
-            f"{game.headers.get('Date', 'Unknown').replace('.', '_')}.pgn"
-        )
+        white = game.headers.get('White', 'White').replace(' ', '_')
+        black = game.headers.get('Black', 'Black').replace(' ', '_')
+        date = game.headers.get('Date', 'Unknown').replace('.', '_')
+        
+        filename = f"{white}_{black}_{date}.pgn"
 
         return pgn_text, filename
 
@@ -1442,25 +1488,39 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             f"Game analyzed!\nWhite Accuracy: {self.white_accuracy}%\nBlack Accuracy: {self.black_accuracy}%"
         )
 
-    def get_opening_from_moves(self, board):
+    def get_opening_from_moves(self, board_or_moves):
         """
-        Given a python-chess board and a list of openings (each with a 'pgn' field),
+        Given either a python-chess board or a list of moves,
         returns the opening that best matches the current move sequence,
         based on the longest matching prefix.
+        
+        @param board_or_moves: Either a chess.Board object or a list of chess.Move objects
+        @return: The best matching opening or None
         """
         moves = []
         temp_board = chess.Board()
-        for move in board.move_stack:
-            san = temp_board.san(move)
-            moves.append(san)
-            temp_board.push(move)
+        
+        # Check if we're getting a board or a list of moves
+        if isinstance(board_or_moves, chess.Board):
+            # Extract moves from board's move_stack
+            for move in board_or_moves.move_stack:
+                san = temp_board.san(move)
+                moves.append(san)
+                temp_board.push(move)
+        else:
+            # Assume it's a list of chess.Move objects
+            for move in board_or_moves:
+                san = temp_board.san(move)
+                moves.append(san)
+                temp_board.push(move)
+        
         current_sequence = " ".join(moves)
         
         best_opening = None
         best_length = 0
         global OPENINGS_DB
         for opening in OPENINGS_DB:
-            # Clean the PGN field to remove move numbers.
+            # Clean the PGN field to remove move numbers
             opening_moves = clean_pgn_moves(opening["pgn"])
             move_count = len(opening_moves.split())
             # If the current sequence starts with this opening's moves and it is longer than the best match so far:

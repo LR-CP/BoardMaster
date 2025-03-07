@@ -164,6 +164,12 @@ class SettingsDialog(QDialog):
         )
         layout.addWidget(self.arrow_move_toggle)
 
+        self.load_openings_toggle = QCheckBox("Load openings on application start")
+        self.load_openings_toggle.setChecked(
+            self.settings.value("game/load_openings", True, bool)
+        )
+        layout.addWidget(self.load_openings_toggle)
+
         save_button = QPushButton("Save")
         save_button.clicked.connect(self.save_settings)
         layout.addWidget(save_button)
@@ -220,6 +226,7 @@ class SettingsDialog(QDialog):
         self.settings.setValue("engine/path", self.engine_path.text())
         self.settings.setValue("game_dir", self.games_dir.text())
         self.settings.setValue("game_analysis_dir", self.game_analysis.text())
+        self.settings.setValue("game/load_openings", self.load_openings_toggle.isChecked())
         self.parent().engine = self.parent().initialize_engine()
         self.accept()
 
