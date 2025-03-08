@@ -81,8 +81,8 @@ class CustomSVGWidget(QSvgWidget):
         # Draw square overlays
         for square, color in self.squares.items():
             # purple rect fill
-            rect = get_square_rect(square) #BUG: Without doing it this way the svg icons do not show
-            painter.fillRect(rect, color)
+            # rect = get_square_rect(square) #BUG: Without doing it this way the svg icons do not show
+            # painter.fillRect(rect, color)
             
             # Dots in corners
             # rect = get_square_rect(square)
@@ -102,14 +102,14 @@ class CustomSVGWidget(QSvgWidget):
             # painter.drawEllipse(rect.bottomRight(), marker_size, marker_size)
 
             # Gradient squares
-            # rect = get_square_rect(square)
-            # center = rect.center()
-            # gradient = QRadialGradient(center, self.square_size/2)
-            # gradient.setColorAt(0, QColor(70, 130, 180, 100))  # Semi-transparent at center
-            # gradient.setColorAt(1, QColor(70, 130, 180, 20))   # Very transparent at edges
-            # painter.setBrush(QBrush(gradient))
-            # painter.setPen(Qt.NoPen)
-            # painter.drawRect(rect)
+            rect = get_square_rect(square)
+            center = rect.center()
+            gradient = QRadialGradient(center, self.square_size/2)
+            gradient.setColorAt(0, QColor(70, 130, 180, 100))  # Semi-transparent at center
+            gradient.setColorAt(1, QColor(70, 130, 180, 20))   # Very transparent at edges
+            painter.setBrush(QBrush(gradient))
+            painter.setPen(Qt.NoPen)
+            painter.drawRect(rect)
         
         # Draw evaluation symbol in the square of the last move
         if self.last_move_eval:
@@ -305,7 +305,7 @@ class GameTab(QWidget):
         # Add analyze button
         self.analyze_button = QPushButton("Analyze Game")
         self.analyze_button.clicked.connect(self.analyze_completed_game)
-        self.analyze_button.setVisible(False)  # Initially hidden
+        self.analyze_button.setVisible(True)
         nav_layout.addWidget(self.analyze_button)
         
         left_layout.addLayout(nav_layout)
@@ -497,7 +497,7 @@ Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})
             self.current_board = self.current_game.board()
             self.current_move_index = 0
             self.has_been_analyzed = False
-            self.analyze_button.setVisible(True)
+            # self.analyze_button.setVisible(True)
             self.update_display()
             self.update_game_summary()
             self.loading_bar.close()
@@ -820,7 +820,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
 
         # Process opening detection for live games
         global OPENINGS_LOADED_FLAG
-        if self.is_live_game == True:
+        if self.is_live_game == True and self.settings.value("game/load_openings", True, bool):
             if not OPENINGS_LOADED_FLAG:
                 dialog = LoadingDialog()
                 dialog.show()
@@ -1487,8 +1487,8 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         self.update_display()
         self.update_game_summary()
         self.loading_bar.close()
-        self.has_been_analyzed = True
-        self.analyze_button.setVisible(False)
+        # self.has_been_analyzed = True
+        # self.analyze_button.setVisible(False)
         QMessageBox.information(
             self,
             "Analysis Complete",
