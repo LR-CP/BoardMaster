@@ -4,6 +4,7 @@ import chess.engine
 import chess.svg
 import json
 import subprocess
+import datetime
 from PySide6.QtWidgets import *
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QAction, QIcon, QKeySequence
@@ -274,13 +275,17 @@ class BoardMaster(QMainWindow):
 
         if analysis is False:
             file_name, _ = QFileDialog.getSaveFileName(
-                self, "Save PGN File", fname, "PGN files (*.pgn)"
+                self, "Save PGN File", fname, filter="*.pgn"
             )
             if file_name:
                 with open(file_name, "w") as f:
                     f.write(pgn_str)
 
         if analysis is True:
+            if not self.new_tab.opening_name:
+                opening = self.new_tab.opening_label.text()
+            else:
+                opening = self.new_tab.opening_name
             analysis_data = {
                 "pgn": pgn_str,
                 "moves": [move.uci() for move in self.new_tab.moves],
@@ -289,7 +294,7 @@ class BoardMaster(QMainWindow):
                 "white_accuracy": self.new_tab.white_accuracy,
                 "black_accuracy": self.new_tab.black_accuracy,
                 "move_notes": self.new_tab.move_notes,
-                "opening_name": self.new_tab.opening_name,
+                "opening_name": opening,
                 "opening_eco": self.new_tab.opening_eco,
             }
 
@@ -352,10 +357,20 @@ class BoardMaster(QMainWindow):
     
     def start_live_game(self):
         self.lg_ctr += 1
-        new_tab = GameTab(self)
-        new_tab.is_live_game = True
-        new_tab.game_details.setText("\n\n\n\n\n") # Dumb fix for board resizing bug on live game
-        self.tab_widget.addTab(new_tab, f"Live Game {self.lg_ctr}")
+        self.new_tab = GameTab(self)
+        self.new_tab.is_live_game = True
+        self.new_tab.hdrs = chess.pgn.Headers()
+        self.new_tab.game_details.setText(f"White: Player 1(?)\nBlack: Player 2(?)\n{datetime.date.today()}\nResult: In Progress\n\n")
+#         White: {self.hdrs.get('White')}({self.hdrs.get('WhiteElo')})
+        # Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})
+        # {self.hdrs.get('Date')}\nResult: {self.hdrs.get('Termination')}
+        self.new_tab.hdrs["White"] = "Player 1"
+        self.new_tab.hdrs["WhiteElo"] = "?"
+        self.new_tab.hdrs["Black"] = "Player 2"
+        self.new_tab.hdrs["BlackElo"] = "?"
+        self.new_tab.hdrs["Date"] = datetime.date.today()
+        self.new_tab.hdrs["Termination"] = ""
+        self.tab_widget.addTab(self.new_tab, f"Live Game {self.lg_ctr}")
 
     def open_interactive_board(self):
         """

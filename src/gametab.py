@@ -79,16 +79,15 @@ class CustomSVGWidget(QSvgWidget):
             return rect.center()
 
         # Draw square overlays
-        for square, color in self.squares.items():
-            # purple rect fill
-            # rect = get_square_rect(square) #BUG: Without doing it this way the svg icons do not show
-            # painter.fillRect(rect, color)
+        # for square, color in self.squares.items():
+        #     rect = get_square_rect(square) #BUG: Without doing it this way the svg icons do not show
+        #     painter.fillRect(rect, color)
             
-            # Dots in corners
+            # # Dots in corners
             # rect = get_square_rect(square)
             # marker_size = self.square_size / 8
             # marker_color = QColor(70, 130, 180)  # Steel blue
-            # Draw small circles in corners
+            # # Draw small circles in corners
             # painter.setPen(Qt.NoPen)
             # painter.setBrush(marker_color)
             # painter.setRenderHint(QPainter.Antialiasing, True)
@@ -102,14 +101,14 @@ class CustomSVGWidget(QSvgWidget):
             # painter.drawEllipse(rect.bottomRight(), marker_size, marker_size)
 
             # Gradient squares
-            rect = get_square_rect(square)
-            center = rect.center()
-            gradient = QRadialGradient(center, self.square_size/2)
-            gradient.setColorAt(0, QColor(70, 130, 180, 100))  # Semi-transparent at center
-            gradient.setColorAt(1, QColor(70, 130, 180, 20))   # Very transparent at edges
-            painter.setBrush(QBrush(gradient))
-            painter.setPen(Qt.NoPen)
-            painter.drawRect(rect)
+            # rect = get_square_rect(square)
+            # center = rect.center()
+            # gradient = QRadialGradient(center, self.square_size/2)
+            # gradient.setColorAt(0, QColor(70, 130, 180, 100))  # Semi-transparent at center
+            # gradient.setColorAt(1, QColor(70, 130, 180, 20))   # Very transparent at edges
+            # painter.setBrush(QBrush(gradient))
+            # painter.setPen(Qt.NoPen)
+            # painter.drawRect(rect)
         
         # Draw evaluation symbol in the square of the last move
         if self.last_move_eval:
@@ -173,17 +172,17 @@ class CustomSVGWidget(QSvgWidget):
                 painter.drawLine(start_center, end_center)
 
         # Draw user circles
-        if hasattr(self, 'user_circles') and self.user_circles:
-            painter.setRenderHint(QPainter.Antialiasing, True)
-            pen = QPen(QColor(255, 170, 0, 160), 4)
-            painter.setPen(pen)
-            painter.setBrush(Qt.NoBrush)
-            for sq in self.user_circles:
-                rect = get_square_rect(sq)
-                margin = 4
-                center = rect.center()
-                radius = (self.square_size / 2) - margin
-                painter.drawEllipse(center, radius, radius)
+        # if hasattr(self, 'user_circles') and self.user_circles:
+        #     painter.setRenderHint(QPainter.Antialiasing, True)
+        #     pen = QPen(QColor(255, 170, 0, 160), 4)
+        #     painter.setPen(pen)
+        #     painter.setBrush(Qt.NoBrush)
+        #     for sq in self.user_circles:
+        #         rect = get_square_rect(sq)
+        #         margin = 4
+        #         center = rect.center()
+        #         radius = (self.square_size / 2) - margin
+        #         painter.drawEllipse(center, radius, radius)
 
         painter.end()
         
@@ -468,6 +467,7 @@ class GameTab(QWidget):
                 return False
             # Save headers from the loaded game.
             self.hdrs = self.current_game.headers
+            print(type(self.hdrs))
             game_detail_text = f"""
 White: {self.hdrs.get('White')}({self.hdrs.get('WhiteElo')})
 Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})
@@ -753,10 +753,10 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 )
                 eval_score = self.eval_to_cp(info[0]["score"].relative)
 
-        if self.selected_square is not None:
-            squares[self.selected_square] = QColor(100, 100, 0, 100)
-            for move in self.legal_moves:
-                squares[move.to_square] = QColor(0, 100, 0, 100)
+        # if self.selected_square is not None:
+        #     squares[self.selected_square] = QColor(100, 100, 0, 100)
+        #     for move in self.legal_moves:
+        #         squares[move.to_square] = QColor(0, 100, 0, 100)
 
         if self.current_move_index > 0 and self.moves:
             last_move = self.moves[self.current_move_index - 1]
@@ -998,6 +998,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
     def export_pgn(self):
         """Rebuild and return a full PGN string directly from headers and moves."""
         game = chess.pgn.Game()
+        index = self.current_move_index
 
         # Apply headers if available
         if hasattr(self, 'hdrs') and self.hdrs:
@@ -1021,6 +1022,12 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
 
         # Ensure we're using all moves up to current_move_index for live games
         moves_to_export = self.moves[:self.current_move_index] if self.is_live_game else self.moves
+
+        print(f"moves to export: {moves_to_export}")
+
+        print(self.moves)
+        print("\n\n\n")
+        print(self.moves[:self.current_move_index])
         
         for move in moves_to_export:
             node = node.add_main_variation(move)
@@ -1050,11 +1057,17 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
 
         # Convert game to PGN string
         pgn_text = str(game)
+        # pgn_text = str(node)
 
         # Create a filename
-        white = game.headers.get('White', 'White').replace(' ', '_')
-        black = game.headers.get('Black', 'Black').replace(' ', '_')
-        date = game.headers.get('Date', 'Unknown').replace('.', '_')
+        if self.is_live_game:
+            white = self.hdrs.get('White', 'White').replace(' ', '_')
+            black = self.hdrs.get('Black', 'Black').replace(' ', '_')
+            date = str(self.hdrs.get('Date', 'Unknown')).replace('.', '_')
+        else:
+            white = game.headers.get('White', 'White').replace(' ', '_')
+            black = game.headers.get('Black', 'Black').replace(' ', '_')
+            date = game.headers.get('Date', 'Unknown').replace('.', '_')
         
         filename = f"{white}_{black}_{date}.pgn"
 
