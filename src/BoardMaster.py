@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt
 from main_window import BoardMaster
 
 if __name__ == "__main__":
-    QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    # QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv)
     window = BoardMaster()
     srcSize = QScreen.availableGeometry(QApplication.primaryScreen())

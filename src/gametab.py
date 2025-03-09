@@ -332,9 +332,14 @@ class GameTab(QWidget):
         self.game_details_dock.setFeatures(QDockWidget.DockWidgetMovable | 
                                        QDockWidget.DockWidgetFloatable |
                                        QDockWidget.DockWidgetClosable)
+        self.game_detail_container = QWidget()
+        detail_layout = QVBoxLayout(self.game_detail_container)
         self.game_details = QLabel()
+        detail_layout.addWidget(self.game_details)
         self.opening_label = QLabel()
-        self.game_details_dock.setWidget(self.game_details)
+        self.opening_label.setWordWrap(True)
+        detail_layout.addWidget(self.opening_label)
+        self.game_details_dock.setWidget(self.game_detail_container)
         self.right_dock_container.addDockWidget(Qt.TopDockWidgetArea, self.game_details_dock)
         
         # Create move list dock
