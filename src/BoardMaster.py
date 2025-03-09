@@ -5,6 +5,7 @@ A free chess analysis tool
 
 #TODO: Add feature to load fen on live game tab
 #TODO: Add board editor feature to live game tab
+#TODO: Add qsetting for piece images folder
 
 import sys
 from PySide6.QtWidgets import QApplication

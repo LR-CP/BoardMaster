@@ -16,3 +16,5 @@ docs/html/
 docs/latex/
 .vscode/
 *parquet
+release/Windows/pieces/
+.pytest_cache/

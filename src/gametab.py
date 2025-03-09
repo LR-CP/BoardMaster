@@ -1,3 +1,4 @@
+import os
 import chess
 import chess.pgn
 import chess.engine
@@ -171,19 +172,6 @@ class CustomSVGWidget(QSvgWidget):
                 end_center = get_square_center(end_sq)
                 painter.drawLine(start_center, end_center)
 
-        # Draw user circles
-        # if hasattr(self, 'user_circles') and self.user_circles:
-        #     painter.setRenderHint(QPainter.Antialiasing, True)
-        #     pen = QPen(QColor(255, 170, 0, 160), 4)
-        #     painter.setPen(pen)
-        #     painter.setBrush(Qt.NoBrush)
-        #     for sq in self.user_circles:
-        #         rect = get_square_rect(sq)
-        #         margin = 4
-        #         center = rect.center()
-        #         radius = (self.square_size / 2) - margin
-        #         painter.drawEllipse(center, radius, radius)
-
         painter.end()
         
 class GameTab(QWidget):
@@ -225,7 +213,6 @@ class GameTab(QWidget):
         self.has_been_analyzed = False  # Add this new flag
         self.move_notes = {}  # Add this new dict to store move notes
 
-        # NEW: Initialize accuracy attributes to avoid attribute errors
         self.white_accuracy = 0
         self.black_accuracy = 0
 
@@ -1376,7 +1363,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
     def get_piece_pixmap(self, piece):
         prefix = "w" if piece.color == chess.WHITE else "b"
         letter = piece.symbol().upper()
-        path = f"/home/lr/Documents/BoardMaster/piece_images/{prefix.lower()}{letter.lower()}.png"
+        path = f"{os.path.dirname(__file__)}/piece_images/{prefix.lower()}{letter.lower()}.png"
         pixmap = QPixmap(path)
         if pixmap.isNull():
             print(f"Error: Failed to load image from {path}")
