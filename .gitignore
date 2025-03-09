@@ -8,7 +8,7 @@ venv/
 *BACKUP*
 *OLD*
 games/
-stockfish.exe
+stockfish*
 __pycache__/
 engine_test.py
 web/

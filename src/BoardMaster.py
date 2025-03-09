@@ -5,9 +5,6 @@ A free chess analysis tool
 
 #TODO: Add feature to load fen on live game tab
 #TODO: Add board editor feature to live game tab
-#TODO: Fix loading openings as a global thing instead of per game (put it in utils or something lazy ass)
-#TODO: Fix the load opening feature so it only happens once instead of reloading every time.
-#BUG: SVG arrows drawn for last move and best move overlap if tehy are the same, making hard to tell
 
 import sys
 from PySide6.QtWidgets import QApplication
