@@ -14,11 +14,11 @@ echo "This installer will copy BoardMaster files to your system."
 echo ""
 
 # Default installation directory (you can change this as needed)
-DEFAULT_INSTALL_DIR="/opt/BoardMaster"
-read -p "Enter installation directory [${DEFAULT_INSTALL_DIR}]: " INSTALL_DIR
-if [ -z "$INSTALL_DIR" ]; then
-    INSTALL_DIR=$DEFAULT_INSTALL_DIR
-fi
+DEFAULT_INSTALL_DIR="/home/$(whoami)/BoardMaster"
+# read -p "Enter installation directory [${DEFAULT_INSTALL_DIR}]: " INSTALL_DIR
+# if [ -z "$INSTALL_DIR" ]; then
+INSTALL_DIR=$DEFAULT_INSTALL_DIR
+# fi
 
 echo ""
 echo "Installing BoardMaster to: $INSTALL_DIR"
@@ -35,7 +35,7 @@ if [ ! -d "$INSTALL_DIR" ]; then
     fi
 fi
 
-# Copy the contents of the build folder (current directory) to the installation directory.
+# Copy the contents of the Linux release folder (current directory) to the installation directory.
 echo "Copying files..."
 cp -r * "$INSTALL_DIR"
 if [ $? -ne 0 ]; then

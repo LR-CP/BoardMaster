@@ -16,5 +16,8 @@ docs/html/
 docs/latex/
 .vscode/
 *parquet
-release/Windows/pieces/
+release/Windows/piece_images/
+release/Linux/piece_images/
 .pytest_cache/
+*.bin
+*.run

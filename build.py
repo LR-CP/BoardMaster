@@ -102,23 +102,24 @@ def package_final_installer(venv_python):
         release_dir = os.path.join(project_dir, "release", "Linux")
     print("Packaging final installer...")
 
-    if platform.system() == "Windows":
-        # Create a pieces subfolder in the release directory
-        pieces_dir = os.path.join(release_dir, "pieces")
-        if not os.path.exists(pieces_dir):
-            os.makedirs(pieces_dir)
-            
-        # Copy all piece images to the release directory's pieces subfolder
-        piece_images_dir = os.path.join(project_dir, "src", "piece_images")
-        for piece_file in ["bb.png", "bk.png", "bn.png", "bp.png", "bq.png", "br.png", 
-                           "wb.png", "wk.png", "wn.png", "wp.png", "wq.png", "wr.png"]:
-            src_path = os.path.join(piece_images_dir, piece_file)
-            dst_path = os.path.join(pieces_dir, piece_file)
-            if os.path.exists(src_path):
-                shutil.copy2(src_path, dst_path)
-            else:
-                print(f"Warning: Piece image {piece_file} not found at {src_path}")
+    # Create a pieces subfolder in the release directory
+    pieces_dir = os.path.join(release_dir, "piece_images")
+    if not os.path.exists(pieces_dir):
+        os.makedirs(pieces_dir)
         
+    # Copy all piece images to the release directory's pieces subfolder
+    piece_images_dir = os.path.join(project_dir, "src", "piece_images")
+    for piece_file in ["bb.png", "bk.png", "bn.png", "bp.png", "bq.png", "br.png", 
+                        "wb.png", "wk.png", "wn.png", "wp.png", "wq.png", "wr.png"]:
+        src_path = os.path.join(piece_images_dir, piece_file)
+        dst_path = os.path.join(pieces_dir, piece_file)
+        if os.path.exists(src_path):
+            shutil.copy2(src_path, dst_path)
+        else:
+            print(f"Warning: Piece image {piece_file} not found at {src_path}")
+
+    if platform.system() == "Windows":
+
         # Create a startup.cmd file for post-installation
         install_cmd_path = os.path.join(release_dir, "install.cmd")
         with open(install_cmd_path, "w") as f:
@@ -224,11 +225,11 @@ SourceFiles1={project_dir}\\release\\Windows\\pieces\\
     else:
         # For Linux, create a self-extracting .run file using makeself.
         run_installer = os.path.join(release_dir, "BoardMasterInstaller.run")
-        installer_script = os.path.join(release_dir, "installer.sh")
+        installer_script = os.path.join(release_dir, "install.sh")
         if not os.path.exists(installer_script):
             print("Error: installer.sh not found in build folder. Please create one to handle installation.")
             return
-        subprocess.check_call(["makeself.sh", release_dir, run_installer, "BoardMaster Installer", "./installer.sh"])
+        subprocess.check_call(["makeself", release_dir, run_installer, "BoardMaster Installer", "./install.sh"])
         print(f"Linux .run installer created at: {run_installer}")
 
 def main():
@@ -250,7 +251,7 @@ def main():
         print(f"Error: Virtual environment not found at {venv_python}.")
         sys.exit(1)
 
-    build_with_nuitka(venv_python, mode)
+    # build_with_nuitka(venv_python, mode)
     create_installer(venv_python)
     package_final_installer(venv_python)
     print("Build complete.")
