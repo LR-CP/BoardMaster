@@ -251,7 +251,7 @@ def main():
         print(f"Error: Virtual environment not found at {venv_python}.")
         sys.exit(1)
 
-    # build_with_nuitka(venv_python, mode)
+    build_with_nuitka(venv_python, mode)
     create_installer(venv_python)
     package_final_installer(venv_python)
     print("Build complete.")
