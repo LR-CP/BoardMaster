@@ -196,7 +196,7 @@ FILE11="wq.png"
 FILE12="wr.png"
 [SourceFiles]
 SourceFiles0={project_dir}\\release\\Windows\\
-SourceFiles1={project_dir}\\release\\Windows\\pieces\\
+SourceFiles1={project_dir}\\release\\Windows\\piece_images\\
 [SourceFiles0]
 %FILE0%=
 [SourceFiles1]
