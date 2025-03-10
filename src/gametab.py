@@ -1,3 +1,4 @@
+import sys
 import os
 import chess
 import chess.pgn
@@ -1363,7 +1364,8 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
     def get_piece_pixmap(self, piece):
         prefix = "w" if piece.color == chess.WHITE else "b"
         letter = piece.symbol().upper()
-        path = f"{os.path.dirname(__file__)}/piece_images/{prefix.lower()}{letter.lower()}.png"
+        path = f"{os.path.dirname(os.path.abspath(sys.argv[0]))}/piece_images/{prefix.lower()}{letter.lower()}.png"
+        print(path)
         pixmap = QPixmap(path)
         if pixmap.isNull():
             print(f"Error: Failed to load image from {path}")

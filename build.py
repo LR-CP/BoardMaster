@@ -11,6 +11,7 @@ def usage(script_name):
     print(f"Usage: {script_name} <command>")
     print("Available commands:")
     print("  quick")
+    print("  debug")
     print("  full")
 
 def get_venv_python(project_dir):
@@ -22,25 +23,43 @@ def get_venv_python(project_dir):
 
 def build_with_nuitka(venv_python, mode):
     """Build the project using Nuitka with options depending on the mode."""
-    base_command = [
-        venv_python,
-        "-m", "nuitka",
-        "--standalone",
-        "--onefile",
-        "--windows-console-mode=disable",
-        "--plugin-enable=pyside6",
-        "--windows-icon-from-ico=./img/king.ico",
-        "src/BoardMaster.py"
-    ]
+    if mode == "debug":
+        base_command = [
+            venv_python,
+            "-m", "nuitka",
+            "--standalone",
+            "--onefile",
+            "--plugin-enable=pyside6",
+            "--windows-icon-from-ico=./img/king.ico",
+            "src/BoardMaster.py"
+        ]
+    elif mode == "quick":
+        base_command = [
+            venv_python,
+            "-m", "nuitka",
+            "--standalone",
+            "--onefile",
+            "--windows-console-mode=disable",
+            "--plugin-enable=pyside6",
+            "--windows-icon-from-ico=./img/king.ico",
+            "src/BoardMaster.py"
+        ]
     
-    if mode == "full":
-        # Add extra options for a full build
-        full_options = ["--lto=yes", "--remove-output"]
-        # Insert full_options after "--onefile"
-        command = [venv_python, "-m", "nuitka", "--standalone", "--onefile"] \
-                  + full_options + base_command[5:]
-    else:
-        command = base_command
+    elif mode == "full":
+        base_command = [
+            venv_python,
+            "-m", "nuitka",
+            "--standalone",
+            "--onefile",
+            "--windows-console-mode=disable",
+            "--plugin-enable=pyside6",
+            "--windows-icon-from-ico=./img/king.ico",
+            "--lto=yes",
+            "--remove-output",
+            "src/BoardMaster.py"
+        ]
+
+    command = base_command
 
     print("Building BoardMaster binary using Nuitka...")
     subprocess.check_call(command)
@@ -220,7 +239,7 @@ def main():
         sys.exit(1)
 
     mode = sys.argv[1].lower()
-    if mode not in ["quick", "full"]:
+    if mode not in ["quick", "debug", "full"]:
         usage(os.path.basename(sys.argv[0]))
         sys.exit(1)
 
