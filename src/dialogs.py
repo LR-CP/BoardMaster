@@ -216,8 +216,7 @@ class SettingsDialog(QDialog):
         file_name, _ = QFileDialog.getOpenFileName(
             self,
             "Select Chess Engine",
-            "",
-            "Executable files (*.exe);;All files (*.*)"
+            ""
         )
         if file_name:
             self.engine_path.setText(file_name)

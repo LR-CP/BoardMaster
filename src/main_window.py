@@ -1,3 +1,4 @@
+import platform
 import chess
 import chess.pgn
 import chess.engine
@@ -20,7 +21,7 @@ class BoardMaster(QMainWindow):
         """
         super().__init__()
         self.setWindowTitle("BoardMaster")
-        self.setGeometry(100, 100, 1700, 900)
+        self.setGeometry(100, 100, 1700, 800)
         self.setWindowIcon(QIcon("./img/king.ico"))
 
         self.settings = QSettings("BoardMaster", "BoardMaster")
@@ -159,7 +160,10 @@ class BoardMaster(QMainWindow):
                 else:
                     return None
                     
-            transport = chess.engine.SimpleEngine.popen_uci(engine_path, creationflags=subprocess.CREATE_NO_WINDOW)
+            if platform.system() == "Windows":
+                transport = chess.engine.SimpleEngine.popen_uci(engine_path, creationflags=subprocess.CREATE_NO_WINDOW)
+            else:
+                transport = chess.engine.SimpleEngine.popen_uci(engine_path)
             # Configure engine settings
             transport.configure({
                 "Threads": self.settings.value("engine/threads", 4, int),

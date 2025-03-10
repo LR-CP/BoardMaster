@@ -1,4 +1,5 @@
 import sys
+import os
 import chess
 import chess.engine
 import chess.svg
@@ -320,7 +321,11 @@ class ChessBoard(QSvgWidget):
         """
         prefix = "w" if piece.color == chess.WHITE else "b"
         letter = piece.symbol().upper()
-        path = f"c:/Users/LPC/Documents/Programs/BoardMaster/piece_images/{prefix.lower()}{letter.lower()}.png"
+        if getattr(sys, 'frozen', False):  # Detects if running as a compiled executable
+            base_path = os.path.dirname(sys.executable)
+        else:
+            base_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+        path = f"{base_path}/piece_images/{prefix.lower()}{letter.lower()}.png"
         pixmap = QPixmap(path)
         if pixmap.isNull():
             print(f"Error: Failed to load image from {path}")

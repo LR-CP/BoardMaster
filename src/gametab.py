@@ -1,3 +1,5 @@
+import sys
+import os
 import chess
 import chess.pgn
 import chess.engine
@@ -171,19 +173,6 @@ class CustomSVGWidget(QSvgWidget):
                 end_center = get_square_center(end_sq)
                 painter.drawLine(start_center, end_center)
 
-        # Draw user circles
-        # if hasattr(self, 'user_circles') and self.user_circles:
-        #     painter.setRenderHint(QPainter.Antialiasing, True)
-        #     pen = QPen(QColor(255, 170, 0, 160), 4)
-        #     painter.setPen(pen)
-        #     painter.setBrush(Qt.NoBrush)
-        #     for sq in self.user_circles:
-        #         rect = get_square_rect(sq)
-        #         margin = 4
-        #         center = rect.center()
-        #         radius = (self.square_size / 2) - margin
-        #         painter.drawEllipse(center, radius, radius)
-
         painter.end()
         
 class GameTab(QWidget):
@@ -225,7 +214,6 @@ class GameTab(QWidget):
         self.has_been_analyzed = False  # Add this new flag
         self.move_notes = {}  # Add this new dict to store move notes
 
-        # NEW: Initialize accuracy attributes to avoid attribute errors
         self.white_accuracy = 0
         self.black_accuracy = 0
 
@@ -239,14 +227,8 @@ class GameTab(QWidget):
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         
-        # Game details and opening label
-        self.game_details = QLabel()
-        left_layout.addWidget(self.game_details)
-        self.opening_label = QLabel()
-        left_layout.addWidget(self.opening_label)
-        
         # Board area as a dock widget
-        self.board_dock_container = QMainWindow()
+        self.board_dock_container = QMainWindow() #TODO: Take board out of dock cause not resizing
         self.board_dock_container.setDockNestingEnabled(True)
         
         # Dummy central widget (required for QMainWindow)
@@ -282,7 +264,7 @@ class GameTab(QWidget):
         self.board_dock_container.addDockWidget(Qt.TopDockWidgetArea, self.board_dock)
         
         # Add dock container to layout
-        left_layout.addWidget(self.board_dock_container)
+        left_layout.addWidget(board_container) # Smushes the board when fullscreen on 1920x1080
         
         # Navigation buttons - same as original
         nav_layout = QHBoxLayout()
@@ -330,6 +312,23 @@ class GameTab(QWidget):
         dummy_central_right = QWidget()
         self.right_dock_container.setCentralWidget(dummy_central_right)
         dummy_central_right.setMaximumSize(0, 0)  # Make it invisible
+
+        # Game details and opening label
+        self.game_details_dock = QDockWidget("Game Details", self.right_dock_container)
+        self.game_details_dock.setObjectName("game_details_dock")
+        self.game_details_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        self.game_details_dock.setFeatures(QDockWidget.DockWidgetMovable | 
+                                       QDockWidget.DockWidgetFloatable |
+                                       QDockWidget.DockWidgetClosable)
+        self.game_detail_container = QWidget()
+        detail_layout = QVBoxLayout(self.game_detail_container)
+        self.game_details = QLabel()
+        detail_layout.addWidget(self.game_details)
+        self.opening_label = QLabel()
+        self.opening_label.setWordWrap(True)
+        detail_layout.addWidget(self.opening_label)
+        self.game_details_dock.setWidget(self.game_detail_container)
+        self.right_dock_container.addDockWidget(Qt.TopDockWidgetArea, self.game_details_dock)
         
         # Create move list dock
         self.move_list_dock = QDockWidget("Move List", self.right_dock_container)
@@ -1365,7 +1364,11 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
     def get_piece_pixmap(self, piece):
         prefix = "w" if piece.color == chess.WHITE else "b"
         letter = piece.symbol().upper()
-        path = f"c:/Users/LPC/Documents/Programs/BoardMaster/piece_images/{prefix.lower()}{letter.lower()}.png"
+        if getattr(sys, 'frozen', False):  # Detects if running as a compiled executable
+            base_path = os.path.dirname(sys.executable)
+        else:
+            base_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+        path = f"{base_path}/piece_images/{prefix.lower()}{letter.lower()}.png"
         pixmap = QPixmap(path)
         if pixmap.isNull():
             print(f"Error: Failed to load image from {path}")
