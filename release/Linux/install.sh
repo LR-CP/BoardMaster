@@ -43,6 +43,8 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+chmod +x $INSTALL_DIR/BoardMaster.bin
+
 echo ""
 echo "Installation complete!"
 echo "BoardMaster has been installed to: $INSTALL_DIR"
