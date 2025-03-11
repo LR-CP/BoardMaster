@@ -563,10 +563,16 @@ class OpeningSearchDialog(QDialog):
             progress.setValue(10)
             QApplication.processEvents()
             # Use the load_openings function (assumed to be defined elsewhere)
-            self.openings_data = load_openings()
-            QApplication.processEvents()
-            progress.setValue(50)
-            QApplication.processEvents()
+            global OPENINGS_LOADED_FLAG
+            global OPENINGS_DB
+            if OPENINGS_LOADED_FLAG == False:
+                self.openings_data = load_openings()
+                QApplication.processEvents()
+                progress.setValue(50)
+                QApplication.processEvents()
+                OPENINGS_LOADED_FLAG = True
+            else:
+                self.openings_data = OPENINGS_DB
         except Exception as e:
             progress.cancel()
             print(f"Error loading openings: {e}")
@@ -583,48 +589,7 @@ class OpeningSearchDialog(QDialog):
             # Populate the initial list
             self.results_list.addItems(self.combined_search)
             
-            # Set up the proper completer with visible popup
-            self.setup_completer()
-            
             progress.setValue(100)
-    
-    def setup_completer(self):
-        """Set up a completer with a visible dropdown."""
-        # Create completer with the list of openings
-        self.completer = QCompleter(self.combined_search)
-        
-        # Important settings for visibility
-        # self.completer.setCompletionMode(QCompleter.PopupCompletion)
-        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
-        self.completer.setFilterMode(Qt.MatchContains)
-        
-        # Get and style the popup
-        # popup = self.completer.popup()
-        # popup.setMinimumHeight(200)
-        # popup.setMinimumWidth(400)
-        
-        # Important: Explicit styling to make sure it's visible
-        # popup.setStyleSheet("""
-        #     QListView {
-        #         border: 2px solid darkgray;
-        #         border-radius: 3px;
-        #         background-color: white;
-        #         selection-background-color: lightblue;
-        #     }
-        #     QListView::item {
-        #         padding: 4px;
-        #     }
-        #     QListView::item:selected {
-        #         background-color: #4a90e2;
-        #         color: white;
-        #     }
-        # """)
-        
-        # Set the completer on the line edit
-        self.search_field.setCompleter(self.completer)
-        
-        # Connect completer signals
-        self.completer.activated.connect(self.on_completer_activated)
     
     def filter_openings(self, text):
         """Filter both the list widget and ensure the completer shows."""
@@ -637,13 +602,6 @@ class OpeningSearchDialog(QDialog):
             filtered_items = [item for item in self.combined_search 
                             if text.lower() in item.lower()]
             self.results_list.addItems(filtered_items)
-        
-        # Force the completer to show its popup
-        # This is crucial - manually complete() and update the prefix
-        if text and len(text) > 1:
-            rect = self.search_field.rect()
-            self.completer.setCompletionPrefix(text)
-            self.completer.complete(rect)  # Important: pass the rect to show at the right position
     
     def on_completer_activated(self, text):
         """Handle when a suggestion is selected from the completer."""
@@ -689,22 +647,3 @@ class OpeningSearchDialog(QDialog):
             QMessageBox.warning(self, "Opening Not Found", 
                               "The selected opening could not be found in the database.",
                               QMessageBox.Ok)
-
-# def clean_pgn_moves(pgn_str):
-#         """Remove move numbers and periods from a PGN string."""
-#         tokens = pgn_str.split()
-#         moves = [token for token in tokens if not re.match(r"^\d+\.$", token)]
-#         return " ".join(moves)
-
-# def load_openings():
-#     # Load the dataset (adjust the dataset name and split as needed)
-#     df = pd.read_parquet("hf://datasets/Lichess/chess-openings/data/train-00000-of-00001.parquet")
-
-#     # We assume the dataset has a 'pgn' column.
-#     df["pgn"] = df["pgn"].astype(str)
-#     df["clean_moves"] = df["pgn"].apply(clean_pgn_moves)
-#     df["move_count"] = df["clean_moves"].apply(lambda s: len(s.split()))
-#     # Sort by move count descending (optional but helps if you want to iterate in order)
-#     df.sort_values("move_count", ascending=False, inplace=True)
-    
-#     return df.to_dict(orient='records')
