@@ -75,6 +75,12 @@ class ChessBoard(QSvgWidget):
             return chess.square(file_idx, rank_idx)
         return None
         
+    def get_piece_svg(self, piece, square):
+        """Generate SVG for a single piece."""
+        size = self.width() // 8  # size of one square
+        piece_svg = chess.svg.piece(piece, size=size)
+        return piece_svg
+
     def mousePressEvent(self, event):
         """Handle mouse press events for drag and click functionality."""
         if event.button() == Qt.LeftButton:
@@ -118,9 +124,16 @@ class ChessBoard(QSvgWidget):
         mime_data = QMimeData()
         mime_data.setText(str(from_square))
         drag.setMimeData(mime_data)
+
+        # Create piece image for dragging
+        piece_svg = self.get_piece_svg(piece, from_square)
+        pixmap = QPixmap(100, 100)  # Fixed size for drag image
+        pixmap.fill(Qt.transparent)
+        pixmap.loadFromData(piece_svg.encode(), 'SVG')
         
-        # Set custom cursor during drag
-        drag.setHotSpot(QPoint(20, 20))
+        # Set the drag pixmap with the piece image
+        drag.setPixmap(pixmap)
+        drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
         
         # Execute the drag
         self.selected_square = from_square
