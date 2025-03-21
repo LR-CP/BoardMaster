@@ -425,7 +425,7 @@ class PlayStockfishDialog(QDialog):
             color = 'random'
             
         return color, int(self.elo_combo.currentText())
-    
+
 class NoteDialog(QDialog):
     """Dialog for adding/editing move notes."""
     def __init__(self, current_note="", parent=None):
@@ -493,12 +493,12 @@ class NoteDialog(QDialog):
         return self.note_edit.toPlainText()
 
 class LoadingDialog(QDialog):
-    def __init__(self):
+    def __init__(self, title, label_text, parent=None):
         super().__init__()
-        self.setWindowTitle("Loading Openings Database...")
+        self.setWindowTitle(title)
         self.setWindowIcon(QIcon("./img/king.ico"))
         layout = QVBoxLayout()
-        self.label = QLabel("Please wait while the openings database is loaded...")
+        self.label = QLabel(label_text)
         layout.addWidget(self.label)
         self.setLayout(layout)
         self.setModal(True)  # This blocks interaction with other windows if needed

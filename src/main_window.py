@@ -12,6 +12,7 @@ from PySide6.QtGui import QAction, QIcon, QKeySequence
 from interactive_board import BoardEditor
 from gametab import GameTab
 from dialogs import *
+from puzzleplayer import ChessPuzzleApp
 
 class BoardMaster(QMainWindow):
     def __init__(self):
@@ -108,6 +109,11 @@ class BoardMaster(QMainWindow):
         interactive_board_action.setShortcut(QKeySequence("Ctrl+P"))
         interactive_board_action.triggered.connect(self.open_interactive_board)
         tool_menu.addAction(interactive_board_action)
+        # Play Puzzles
+        puzzle_action = QAction("Play Puzzles", self)
+        puzzle_action.setShortcut(QKeySequence("Ctrl+G"))
+        puzzle_action.triggered.connect(self.open_interactive_puzzle_board)
+        tool_menu.addAction(puzzle_action)
         # Add PGN Splitter action
         split_pgn_action = QAction("PGN Splitter", self)
         split_pgn_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
@@ -392,6 +398,13 @@ class BoardMaster(QMainWindow):
                                              time=self.settings.value("analysis/postime", 3, int),
                                              depth=self.settings.value("engine/depth", 40, int)
                                              )
+        self.interactive_board.show()
+
+    def open_interactive_puzzle_board(self):
+        """
+        @brief Open the interactive board for puzzles.
+        """
+        self.interactive_board = ChessPuzzleApp()
         self.interactive_board.show()
 
     def load_game(self, opening=None):

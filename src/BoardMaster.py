@@ -9,8 +9,7 @@ A free chess analysis tool
 
 import sys
 from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QScreen, QGuiApplication
-from PySide6.QtCore import Qt
+from PySide6.QtGui import QScreen
 from main_window import BoardMaster
 
 if __name__ == "__main__":

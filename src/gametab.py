@@ -821,7 +821,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         global OPENINGS_LOADED_FLAG
         if self.is_live_game == True and self.settings.value("game/load_openings", True, bool):
             if not OPENINGS_LOADED_FLAG:
-                dialog = LoadingDialog()
+                dialog = LoadingDialog(title="Loading Openings Database...", label_text="Please wait while the openings database is loaded...")
                 dialog.show()
                 QApplication.processEvents()
                 load_openings()
@@ -908,6 +908,8 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             i += 2
             move_number += 1
 
+        self.analyze_position()
+        
         if self.current_move_index > 0:
             row = (self.current_move_index - 1) // 2
             self.move_list.setCurrentRow(row)
@@ -1182,8 +1184,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         global_offset = (self.board_display.width() - board_size) / 2
 
         # Check if click is within the board area.
-        if pos.x() < global_offset or pos.x() > global_offset + board_size or \
-        pos.y() < global_offset or pos.y() > global_offset + board_size:
+        if pos.x() < global_offset or pos.x() > global_offset + board_size or pos.y() < global_offset or pos.y() > global_offset + board_size:
             return super().mousePressEvent(event)
 
         # Compute board-relative coordinates.
