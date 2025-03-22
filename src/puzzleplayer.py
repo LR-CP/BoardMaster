@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PySide6.QtSvgWidgets import QSvgWidget
 import polars as pl
 
+PUZZLES_LOADED_FLAG = False
+PUZZLES_DB = None
 
 class ChessBoard(QSvgWidget):
     """Chess board widget using SVG rendering."""
@@ -242,11 +244,20 @@ class PuzzleManager:
         
     def load_puzzle_dataset(self):
         """Load puzzles from Hugging Face parquet file using polars."""
+        global PUZZLES_LOADED_FLAG
+        global PUZZLES_DB
+        
+        if PUZZLES_LOADED_FLAG and PUZZLES_DB is not None:
+            self.dataframe = PUZZLES_DB
+            return PUZZLES_DB
+
         try:
             QApplication.processEvents()
             df = pl.read_parquet("hf://datasets/Lichess/chess-puzzles/data/train-00000-of-00003.parquet")
             QApplication.processEvents()
             self.dataframe = df
+            PUZZLES_DB = df
+            PUZZLES_LOADED_FLAG = True
             return df
         except Exception as e:
             print(f"Error loading puzzle dataset: {e}")
@@ -590,7 +601,13 @@ class ChessPuzzleApp(QMainWindow):
         self.status_label.setText("Loading puzzles from Hugging Face (Parquet)...")
         QApplication.processEvents()
         
-        # First load the dataset
+        # First check if puzzles are already loaded
+        global PUZZLES_LOADED_FLAG
+        if PUZZLES_LOADED_FLAG:
+            self.status_label.setText("Using cached puzzle dataset...")
+            QApplication.processEvents()
+        
+        # Load or use cached dataset
         df = self.puzzle_manager.load_puzzle_dataset()
         
         if df is not None:

@@ -228,7 +228,7 @@ class GameTab(QWidget):
         left_layout = QVBoxLayout(left_panel)
         
         # Board area as a dock widget
-        self.board_dock_container = QMainWindow() #TODO: Take board out of dock cause not resizing
+        self.board_dock_container = QMainWindow()
         self.board_dock_container.setDockNestingEnabled(True)
         
         # Dummy central widget (required for QMainWindow)
@@ -466,7 +466,6 @@ class GameTab(QWidget):
                 return False
             # Save headers from the loaded game.
             self.hdrs = self.current_game.headers
-            print(type(self.hdrs))
             game_detail_text = f"""
 White: {self.hdrs.get('White')}({self.hdrs.get('WhiteElo')})
 Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})
@@ -570,7 +569,7 @@ Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})
         
         global OPENINGS_LOADED_FLAG
         if OPENINGS_LOADED_FLAG == False:
-            dialog = LoadingDialog()
+            dialog = LoadingDialog(title="Loading Openings dataset...", label_text="Please wait while the openings dataset is loaded.")
             dialog.show()
             QApplication.processEvents()
             load_openings()
