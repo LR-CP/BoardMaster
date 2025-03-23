@@ -29,6 +29,7 @@ class CustomSVGWidget(QSvgWidget):
         self.highlight_moves = []  # NEW: squares to highlight
         self.last_move_eval = None  # NEW: Store evaluation symbol for last move
         self.flipped = False
+        self.previous_move = None
         self.user_circles = set()  # Initialize user_circles as empty set
     
     def resizeEvent(self, event):
@@ -213,6 +214,7 @@ class GameTab(QWidget):
         self.last_shown_game_over = False  # Add this to track if we've shown the game over dialog
         self.has_been_analyzed = False  # Add this new flag
         self.move_notes = {}  # Add this new dict to store move notes
+        self.last_made_move = None
 
         self.white_accuracy = 0
         self.black_accuracy = 0
@@ -760,12 +762,12 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             last_move = self.moves[self.current_move_index - 1]
             # squares[last_move.to_square] = QColor(128, 0, 128, 100)
             # squares[last_move.from_square] = QColor(128, 0, 128, 100)
-            prev_move_color = QColor(128, 0, 128, 100)
-            arrows.append(chess.svg.Arrow(
-                tail=last_move.from_square,
-                head=last_move.to_square,
-                color=prev_move_color.name()
-            ))
+            # prev_move_color = QColor(128, 0, 128, 100)
+            # arrows.append(chess.svg.Arrow(
+            #     tail=last_move.from_square,
+            #     head=last_move.to_square,
+            #     color=prev_move_color.name()
+            # ))
 
         if self.current_board.is_check():
             king_square = self.current_board.king(self.current_board.turn)
@@ -773,11 +775,15 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 squares[king_square] = QColor(255, 0, 0, 150)
 
         board_size = int(self.board_display.square_size * 8)
-        
+        check = self.current_board.king(self.current_board.turn) if self.current_board.is_check() else None
+        lastmove = self.moves[self.current_move_index - 1] if self.current_move_index > 0 else None
+
         board_svg = chess.svg.board(
             self.current_board,
             arrows=arrows,
+            lastmove=lastmove, #TODO: Get this working for highlighting
             size=board_size,
+            check=check,
             orientation=chess.BLACK if self.flipped else chess.WHITE
         )
         self.board_display.load(QByteArray(board_svg.encode("utf-8")))
