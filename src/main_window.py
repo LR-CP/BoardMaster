@@ -340,7 +340,7 @@ class BoardMaster(QMainWindow):
             self.new_tab.white_accuracy = analysis_data.get("white_accuracy", 0)
             self.new_tab.black_accuracy = analysis_data.get("black_accuracy", 0)
             self.new_tab.move_notes = analysis_data.get("move_notes", {})
-            self.new_tab.opening_label.setText(f"Opening: {analysis_data.get("opening_name", {})} {analysis_data.get("opening_eco", {})}")
+            self.new_tab.opening_label.setText(f"Opening: {analysis_data.get('opening_name', {})} {analysis_data.get('opening_eco', {})}")
             self.new_tab.has_been_analyzed = True
             self.new_tab.update_display()
             self.new_tab.update_game_summary()
@@ -414,7 +414,7 @@ class BoardMaster(QMainWindow):
         pgn_string = self.pgn_text.toPlainText()
         self.new_tab = GameTab(self)
         if opening is None and self.new_tab.load_pgn(pgn_string):
-            self.tab_widget.addTab(self.new_tab, f"{self.new_tab.hdrs.get("White")}_{self.new_tab.hdrs.get("Black")}_{self.new_tab.hdrs.get("Date").replace(".", "_")}")
+            self.tab_widget.addTab(self.new_tab, f"{self.new_tab.hdrs.get('White')}_{self.new_tab.hdrs.get('Black')}_{self.new_tab.hdrs.get('Date').replace('.', '_')}")
             self.tab_widget.setCurrentWidget(self.new_tab)
         elif opening is not None and self.new_tab.load_pgn(pgn_string):
             self.tab_widget.addTab(self.new_tab, f"{opening}_Review")
