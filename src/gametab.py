@@ -10,7 +10,7 @@ import polars as pl
 import re
 from PySide6.QtWidgets import *
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtCore import QByteArray, QSettings, Qt, QPointF, QRectF, QMimeData, QPoint
+from PySide6.QtCore import QByteArray, QSettings, Qt, QPointF, QRectF, QMimeData, QPoint, QTimer
 from PySide6.QtGui import QPainter, QColor, QPixmap, QPen, QFont, QDrag
 import math
 from utils import MoveRow, EvaluationGraphPG
@@ -164,26 +164,35 @@ class CustomSVGWidget(QSvgWidget):
         square = self.square_at_position(event.position())
         if square is not None and event.mimeData().hasText():
             from_square = int(event.mimeData().text())
-            if self.game_tab:  # Call handle_drop_move on GameTab instead of parent
+            if self.game_tab:
                 move = chess.Move(from_square, square)
                 if move in self.game_tab.current_board.legal_moves:
+                    # First update the board display immediately
                     self.game_tab.current_board.push(move)
-                    if self.game_tab.is_live_game:
-                        if self.game_tab.current_move_index < len(self.game_tab.moves):
-                            self.game_tab.moves = self.game_tab.moves[:self.game_tab.current_move_index]
-                            self.game_tab.move_evaluations = self.game_tab.move_evaluations[:self.game_tab.current_move_index]
-                            self.game_tab.move_evaluations_scores = self.game_tab.move_evaluations_scores[:self.game_tab.current_move_index]
-                        self.game_tab.moves.append(move)
-                        self.game_tab.current_move_index += 1
-                        self.last_move_eval = None
-                        self.game_tab.update_live_eval()
-                        self.game_tab.check_game_over()
-                        if hasattr(self.game_tab, 'computer_color') and self.game_tab.current_board.turn == self.game_tab.computer_color:
-                            self.game_tab.make_computer_move()
-                    self.game_tab.update_display()
-            event.accept()
-        else:
-            event.ignore()
+                    self.highlight_moves = []
+                    # Then handle the move consequences in a deferred manner
+                    QTimer.singleShot(0, lambda: self.handle_move_consequences(move))
+
+                    self.update()
+                    event.acceptProposedAction()
+                    return
+        event.ignore()
+
+    def handle_move_consequences(self, move):
+        """Handle move consequences after the piece is dropped."""
+        if self.game_tab.is_live_game:
+            if self.game_tab.current_move_index < len(self.game_tab.moves):
+                self.game_tab.moves = self.game_tab.moves[:self.game_tab.current_move_index]
+                self.game_tab.move_evaluations = self.game_tab.move_evaluations[:self.game_tab.current_move_index]
+                self.game_tab.move_evaluations_scores = self.game_tab.move_evaluations_scores[:self.game_tab.current_move_index]
+            self.game_tab.moves.append(move)
+            self.game_tab.current_move_index += 1
+            self.last_move_eval = None
+            self.game_tab.update_live_eval()
+            self.game_tab.check_game_over()
+            if hasattr(self.game_tab, 'computer_color') and self.game_tab.current_board.turn == self.game_tab.computer_color:
+                self.game_tab.make_computer_move()
+        self.game_tab.update_display()
 
     def square_at_position(self, pos):
         """Convert screen coordinates to chess square."""
