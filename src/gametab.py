@@ -132,6 +132,16 @@ class CustomSVGWidget(QSvgWidget):
         while game_tab and not hasattr(game_tab, 'arrows'):
             game_tab = game_tab.parent()
         
+        if self.user_circles:
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            pen = QPen(QColor(255, 170, 0, 160), 5)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            for sq in self.user_circles:
+                center = get_square_center(sq)
+                radius = self.square_size / 3
+                painter.drawEllipse(center, radius, radius)
+        
         if game_tab is not None:
             for arrow in game_tab.arrows:
                 start_sq, end_sq = arrow
@@ -221,34 +231,61 @@ class CustomSVGWidget(QSvgWidget):
         return None
 
     def mousePressEvent(self, event):
-        """Handle mouse press events for drag and click functionality."""
+        """Handle mouse press events for piece movement."""
+        pos = event.localPos()
+        board_size = 8 * self.board_display.square_size
+        global_offset = (self.board_display.width() - board_size) / 2
+
+        # Check if click is within board boundaries
+        if not self.is_within_board(pos):
+            return super().mousePressEvent(event)
+
+        # Calculate square coordinates
+        adjusted_x = pos.x() - global_offset
+        adjusted_y = pos.y() - global_offset
+        if self.flipped:
+            file_idx = 7 - int(adjusted_x // self.board_display.square_size)
+            rank_idx = int(adjusted_y // self.board_display.square_size)
+        else:
+            file_idx = int(adjusted_x // self.board_display.square_size)
+            rank_idx = 7 - int(adjusted_y // self.board_display.square_size)
+        square = chess.square(file_idx, rank_idx)
+        piece = self.current_board.piece_at(square)
+
+        # Left-click on an empty square: clear drawn arrows and circles (added back)
         if event.button() == Qt.LeftButton:
-            square = self.square_at_position(event.position())
-            if square is not None:
-                piece = self.parent().current_board.piece_at(square)
-                if piece and piece.color == self.parent().current_board.turn:
-                    # Start drag immediately
-                    drag = QDrag(self)
-                    mime_data = QMimeData()
-                    mime_data.setText(str(square))
-                    drag.setMimeData(mime_data)
-                    
-                    # Set drag pixmap
-                    pixmap = self.parent().get_piece_pixmap(piece)
-                    drag.setPixmap(pixmap)
-                    drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
-                    
-                    # Highlight legal moves
-                    legal_moves = [move for move in self.parent().current_board.legal_moves if move.from_square == square]
-                    self.highlight_moves = [move.to_square for move in legal_moves]
-                    self.update()
-                    
-                    # Execute drag
-                    result = drag.exec(Qt.MoveAction)
-                    
-                    # Clear highlights
-                    self.highlight_moves = []
-                    self.update()
+            self.arrows = []
+            self.user_circles = set()
+            self.board_display.user_circles = self.user_circles
+            self.board_display.repaint()
+            print("hello")
+
+        # Right-click: start arrow/circle drawing
+        if event.button() == Qt.RightButton:
+            self.arrow_start = square
+            self.current_arrow = (square, square)
+            event.accept()
+            self.board_display.repaint()
+            return
+
+        # Left-click on a piece: begin drag (existing code)
+        if event.button() == Qt.LeftButton and piece:
+            drag = QDrag(self.board_display)
+            mime_data = QMimeData()
+            mime_data.setText(str(square))
+            drag.setMimeData(mime_data)
+            pixmap = self.get_piece_pixmap(piece)
+            drag.setPixmap(pixmap)
+            drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
+            legal_moves = [move for move in self.current_board.legal_moves if move.from_square == square]
+            self.board_display.highlight_moves = [move.to_square for move in legal_moves]
+            self.board_display.repaint()
+            result = drag.exec(Qt.MoveAction)
+            self.board_display.highlight_moves = []
+            self.board_display.repaint()
+            return
+
+        super().mousePressEvent(event)
 
 class GameTab(QWidget):
     def __init__(self, parent=None):
@@ -1288,6 +1325,13 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             event.accept()
             self.board_display.repaint()
             return
+        
+        # Left-click on an empty square: clear drawn arrows and circles (added back)
+        if event.button() == Qt.LeftButton:
+            self.arrows = []
+            self.user_circles = set()
+            self.board_display.user_circles = self.user_circles
+            self.board_display.repaint()
 
         # Handle left-click for piece movement
         if event.button() == Qt.LeftButton and piece:
