@@ -292,10 +292,7 @@ class BoardMaster(QMainWindow):
                     f.write(pgn_str)
 
         if analysis is True:
-            if not self.new_tab.opening_name:
-                opening = self.new_tab.opening_label.text()
-            else:
-                opening = self.new_tab.opening_name
+            opening = self.new_tab.opening_label.text()
             analysis_data = {
                 "pgn": pgn_str,
                 "moves": [move.uci() for move in self.new_tab.moves],
@@ -305,7 +302,7 @@ class BoardMaster(QMainWindow):
                 "black_accuracy": self.new_tab.black_accuracy,
                 "move_notes": self.new_tab.move_notes,
                 "opening_name": opening,
-                "opening_eco": self.new_tab.opening_eco,
+                # "opening_eco": self.new_tab.opening_eco,
             }
 
             file_name, _ = QFileDialog.getSaveFileName(
