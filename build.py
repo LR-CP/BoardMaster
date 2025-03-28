@@ -103,20 +103,20 @@ def package_final_installer(venv_python):
     print("Packaging final installer...")
 
     # Create a pieces subfolder in the release directory
-    pieces_dir = os.path.join(release_dir, "piece_images")
-    if not os.path.exists(pieces_dir):
-        os.makedirs(pieces_dir)
+    # pieces_dir = os.path.join(release_dir, "piece_images")
+    # if not os.path.exists(pieces_dir):
+    #     os.makedirs(pieces_dir)
         
-    # Copy all piece images to the release directory's pieces subfolder
-    piece_images_dir = os.path.join(project_dir, "src", "piece_images")
-    for piece_file in ["bb.png", "bk.png", "bn.png", "bp.png", "bq.png", "br.png", 
-                        "wb.png", "wk.png", "wn.png", "wp.png", "wq.png", "wr.png"]:
-        src_path = os.path.join(piece_images_dir, piece_file)
-        dst_path = os.path.join(pieces_dir, piece_file)
-        if os.path.exists(src_path):
-            shutil.copy2(src_path, dst_path)
-        else:
-            print(f"Warning: Piece image {piece_file} not found at {src_path}")
+    # # Copy all piece images to the release directory's pieces subfolder
+    # piece_images_dir = os.path.join(project_dir, "src", "piece_images")
+    # for piece_file in ["bb.png", "bk.png", "bn.png", "bp.png", "bq.png", "br.png", 
+    #                     "wb.png", "wk.png", "wn.png", "wp.png", "wq.png", "wr.png"]:
+    #     src_path = os.path.join(piece_images_dir, piece_file)
+    #     dst_path = os.path.join(pieces_dir, piece_file)
+    #     if os.path.exists(src_path):
+    #         shutil.copy2(src_path, dst_path)
+    #     else:
+    #         print(f"Warning: Piece image {piece_file} not found at {src_path}")
 
     if platform.system() == "Windows":
 
@@ -129,18 +129,12 @@ def package_final_installer(venv_python):
             f.write('set TARGET_PATH=%USERPROFILE%\\BoardMaster\n\n')
             f.write('REM Create installation directory\n')
             f.write('if not exist "%TARGET_PATH%" mkdir "%TARGET_PATH%"\n')
-            f.write('if not exist "%TARGET_PATH%\\piece_images" mkdir "%TARGET_PATH%\\piece_images"\n\n')
             f.write('REM Copy BoardMaster.exe\n')
             f.write('echo Copying BoardMaster.exe...\n')
             f.write('copy "%~dp0BoardMaster.exe" "%TARGET_PATH%" /Y\n\n')
-            f.write('REM Copy piece images from the pieces folder to piece_images folder\n')
-            f.write('echo Copying piece images...\n')
-            f.write('for %%f in ("%~dp0pieces\\*.png") do (\n')
-            f.write('    copy "%%f" "%TARGET_PATH%\\piece_images\\" /Y\n')
-            f.write(')\n\n')
             f.write('REM Confirm installation success\n')
             f.write('echo BoardMaster has been installed successfully to %TARGET_PATH%!\n')
-            f.write(r'powershell -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut(\"$env:USERPROFILE\Desktop\BoardMaster.lnk\");$s.TargetPath=\"%~dp0BoardMaster.exe\";$s.Save()"')
+            f.write(r'powershell -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut(\"$env:USERPROFILE\Desktop\BoardMaster.lnk\");$s.TargetPath=\"%TARGET_PATH%\BoardMaster.exe\";$s.Save()"')
             f.write("\n")
             f.write('echo You can run it from there or from the desktop shortcut.\n')
             f.write('pause\n')
@@ -182,36 +176,10 @@ PostInstallCmd={project_dir}\\release\\Windows\\install.cmd
 AdminQuietInstCmd=
 UserQuietInstCmd=
 FILE0="BoardMaster.exe"
-FILE1="bb.png"
-FILE2="bk.png"
-FILE3="bn.png"
-FILE4="bp.png"
-FILE5="bq.png"
-FILE6="br.png"
-FILE7="wb.png"
-FILE8="wk.png"
-FILE9="wn.png"
-FILE10="wp.png"
-FILE11="wq.png"
-FILE12="wr.png"
 [SourceFiles]
 SourceFiles0={project_dir}\\release\\Windows\\
-SourceFiles1={project_dir}\\release\\Windows\\piece_images\\
 [SourceFiles0]
 %FILE0%=
-[SourceFiles1]
-%FILE1%=
-%FILE2%=
-%FILE3%=
-%FILE4%=
-%FILE5%=
-%FILE6%=
-%FILE7%=
-%FILE8%=
-%FILE9%=
-%FILE10%=
-%FILE11%=
-%FILE12%=
 """
         sed_path = os.path.join(release_dir, "installer.sed")
         with open(sed_path, "w", encoding="windows-1252") as f:

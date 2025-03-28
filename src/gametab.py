@@ -35,17 +35,33 @@ class CustomSVGWidget(QSvgWidget):
         self.setAcceptDrops(True)  # Add this line to explicitly enable drops
         self.game_tab = parent  # Store reference to GameTab parent
     
-    def resizeEvent(self, event):
-        # Set minimum padding around the board (in pixels)
-        padding = 30
+    # def resizeEvent(self, event):
+    #     # Set minimum padding around the board (in pixels)
+    #     padding = 30
         
-        # Calculate available space accounting for padding
-        available_width = self.width() - (2 * padding)
-        available_height = self.height() - (2 * padding)
+    #     # Calculate available space accounting for padding
+    #     available_width = self.width() - (2 * padding)
+    #     available_height = self.height() - (2 * padding)
         
-        # Use the smaller dimension to ensure square fits
-        self.square_size = min(available_width, available_height) / 8
+    #     # Use the smaller dimension to ensure square fits
+    #     self.square_size = min(available_width, available_height) / 8
 
+    #     super().resizeEvent(event)
+
+    def resizeEvent(self, event):
+        """
+        Handle resize events to maintain a square board.
+        """
+        # Make the widget square based on the smaller dimension
+        min_size = min(self.width(), self.height())
+        
+        # Set both dimensions equal to maintain square shape
+        self.setMinimumSize(min_size, min_size)
+        self.setMaximumSize(min_size, min_size)
+        
+        # Calculate square size based on the widget size
+        self.square_size = min_size / 8
+        
         super().resizeEvent(event)
 
     def paintEvent(self, event):
@@ -201,7 +217,7 @@ class CustomSVGWidget(QSvgWidget):
             self.game_tab.update_live_eval()
             self.game_tab.check_game_over()
             if hasattr(self.game_tab, 'computer_color') and self.game_tab.current_board.turn == self.game_tab.computer_color:
-                self.game_tab.make_computer_move()
+                QTimer.singleShot(500, self.game_tab.make_computer_move)
         self.game_tab.update_display()
 
     def square_at_position(self, pos):
@@ -230,62 +246,61 @@ class CustomSVGWidget(QSvgWidget):
             return chess.square(file_idx, rank_idx)
         return None
 
-    def mousePressEvent(self, event):
-        """Handle mouse press events for piece movement."""
-        pos = event.localPos()
-        board_size = 8 * self.board_display.square_size
-        global_offset = (self.board_display.width() - board_size) / 2
+    # def mousePressEvent(self, event):
+    #     """Handle mouse press events for piece movement."""
+    #     pos = event.localPos()
+    #     board_size = 8 * self.board_display.square_size
+    #     global_offset = (self.board_display.width() - board_size) / 2
 
-        # Check if click is within board boundaries
-        if not self.is_within_board(pos):
-            return super().mousePressEvent(event)
+    #     # Check if click is within board boundaries
+    #     if not self.is_within_board(pos):
+    #         return super().mousePressEvent(event)
 
-        # Calculate square coordinates
-        adjusted_x = pos.x() - global_offset
-        adjusted_y = pos.y() - global_offset
-        if self.flipped:
-            file_idx = 7 - int(adjusted_x // self.board_display.square_size)
-            rank_idx = int(adjusted_y // self.board_display.square_size)
-        else:
-            file_idx = int(adjusted_x // self.board_display.square_size)
-            rank_idx = 7 - int(adjusted_y // self.board_display.square_size)
-        square = chess.square(file_idx, rank_idx)
-        piece = self.current_board.piece_at(square)
+    #     # Calculate square coordinates
+    #     adjusted_x = pos.x() - global_offset
+    #     adjusted_y = pos.y() - global_offset
+    #     if self.flipped:
+    #         file_idx = 7 - int(adjusted_x // self.board_display.square_size)
+    #         rank_idx = int(adjusted_y // self.board_display.square_size)
+    #     else:
+    #         file_idx = int(adjusted_x // self.board_display.square_size)
+    #         rank_idx = 7 - int(adjusted_y // self.board_display.square_size)
+    #     square = chess.square(file_idx, rank_idx)
+    #     piece = self.current_board.piece_at(square)
 
-        # Left-click on an empty square: clear drawn arrows and circles (added back)
-        if event.button() == Qt.LeftButton:
-            self.arrows = []
-            self.user_circles = set()
-            self.board_display.user_circles = self.user_circles
-            self.board_display.repaint()
-            print("hello")
+    #     # Left-click on an empty square: clear drawn arrows and circles (added back)
+    #     if event.button() == Qt.LeftButton:
+    #         self.arrows = []
+    #         self.user_circles = set()
+    #         self.board_display.user_circles = self.user_circles
+    #         self.board_display.repaint()
 
-        # Right-click: start arrow/circle drawing
-        if event.button() == Qt.RightButton:
-            self.arrow_start = square
-            self.current_arrow = (square, square)
-            event.accept()
-            self.board_display.repaint()
-            return
+    #     # Right-click: start arrow/circle drawing
+    #     if event.button() == Qt.RightButton:
+    #         self.arrow_start = square
+    #         self.current_arrow = (square, square)
+    #         event.accept()
+    #         self.board_display.repaint()
+    #         return
 
-        # Left-click on a piece: begin drag (existing code)
-        if event.button() == Qt.LeftButton and piece:
-            drag = QDrag(self.board_display)
-            mime_data = QMimeData()
-            mime_data.setText(str(square))
-            drag.setMimeData(mime_data)
-            pixmap = self.get_piece_pixmap(piece)
-            drag.setPixmap(pixmap)
-            drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
-            legal_moves = [move for move in self.current_board.legal_moves if move.from_square == square]
-            self.board_display.highlight_moves = [move.to_square for move in legal_moves]
-            self.board_display.repaint()
-            result = drag.exec(Qt.MoveAction)
-            self.board_display.highlight_moves = []
-            self.board_display.repaint()
-            return
-
-        super().mousePressEvent(event)
+    #     # Left-click on a piece: begin drag (existing code)
+    #     if event.button() == Qt.LeftButton and piece:
+    #         drag = QDrag(self.board_display)
+    #         mime_data = QMimeData()
+    #         mime_data.setText(str(square))
+    #         drag.setMimeData(mime_data)
+    #         pixmap = self.get_piece_pixmap(piece)
+    #         drag.setPixmap(pixmap)
+    #         drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
+    #         legal_moves = [move for move in self.current_board.legal_moves if move.from_square == square]
+    #         self.board_display.highlight_moves = [move.to_square for move in legal_moves]
+    #         self.board_display.repaint()
+    #         result = drag.exec(Qt.MoveAction)
+    #         self.board_display.highlight_moves = []
+    #         self.board_display.repaint()
+    #         return
+# 
+        # super().mousePressEvent(event)
 
 class GameTab(QWidget):
     def __init__(self, parent=None):
@@ -1275,18 +1290,36 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         else:
             super().keyPressEvent(event)
         
+    # def is_within_board(self, pos):
+    #     """
+    #     @brief Check if a given position is within the board boundaries.
+    #     @param pos The QPoint position.
+    #     @return True if within boundaries, else False.
+    #     """
+    #     board_size = 8 * self.square_size
+    #     global_offset = (self.board_display.width() - board_size) / 2
+    #     board_x = global_offset
+    #     board_y = global_offset
+    #     return (board_x <= pos.x() <= board_x + board_size and 
+    #             board_y <= pos.y() <= board_y + board_size)
+    
     def is_within_board(self, pos):
         """
         @brief Check if a given position is within the board boundaries.
         @param pos The QPoint position.
         @return True if within boundaries, else False.
         """
-        board_size = 8 * self.square_size
-        global_offset = (self.board_display.width() - board_size) / 2
-        board_x = global_offset
-        board_y = global_offset
-        return (board_x <= pos.x() <= board_x + board_size and 
-                board_y <= pos.y() <= board_y + board_size)
+        board_size = 8 * self.board_display.square_size
+        global_offset_x = (self.board_display.width() - board_size) / 2
+        global_offset_y = (self.board_display.height() - board_size) / 2
+
+        # Calculate actual board boundaries
+        left = global_offset_x
+        right = global_offset_x + board_size
+        top = global_offset_y
+        bottom = global_offset_y + board_size
+        
+        return (left <= pos.x() <= right and top <= pos.y() <= bottom)
 
     def arrow_toggle(self):
         self.show_arrows = not self.show_arrows
@@ -1414,7 +1447,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 self.update_live_eval()
                 self.check_game_over()
                 if hasattr(self, 'computer_color') and self.current_board.turn == self.computer_color:
-                    self.make_computer_move()
+                    QTimer.singleShot(500, self.make_computer_move)
             self.update_display()
 
     def mouseReleaseEvent(self, event):
@@ -1462,7 +1495,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                     self.update_live_eval()
                     self.check_game_over()
                     if hasattr(self, 'computer_color') and self.current_board.turn == self.computer_color:
-                        self.make_computer_move()
+                        QTimer.singleShot(500, self.make_computer_move)
             self.dragging = False
             self.drag_start_square = None
             self.drag_current_pos = None
@@ -1495,28 +1528,32 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             self.black_moves = [self.move_evaluations_scores[i] for i in range(1, len(self.move_evaluations_scores), 2)]
             self.eval_graph.update_graph(self.white_moves, self.black_moves)
 
+    def get_piece_svg(self, piece):
+        """Generate SVG for a single piece."""
+        size = self.width() // 8  # size of one square
+        piece_svg = chess.svg.piece(piece, size=size)
+        return piece_svg
+    
     def get_piece_pixmap(self, piece):
-        prefix = "w" if piece.color == chess.WHITE else "b"
-        letter = piece.symbol().upper()
-        if getattr(sys, 'frozen', False):  # Detects if running as a compiled executable
-            base_path = os.path.dirname(sys.executable)
-        else:
-            base_path = os.path.dirname(os.path.abspath(sys.argv[0]))
-        path = f"{base_path}/piece_images/{prefix.lower()}{letter.lower()}.png"
-        pixmap = QPixmap(path)
+        piece_svg = self.get_piece_svg(piece)
+        pixmap = QPixmap(100, 100)  # Fixed size for drag image
+        pixmap.loadFromData(piece_svg.encode(), 'SVG')
+        
+        # Handle failed loads
         if pixmap.isNull():
-            print(f"Error: Failed to load image from {path}")
+            print(f"Error: Failed to load image for piece")
             pixmap = QPixmap(self.board_display.square_size, self.board_display.square_size)
             pixmap.fill(Qt.transparent)
             painter = QPainter(pixmap)
             painter.setPen(Qt.black)
             painter.drawText(pixmap.rect(), Qt.AlignCenter, piece.symbol())
             painter.end()
-        # Use the current board_display square size
-        return pixmap.scaled(self.board_display.square_size,
-                            self.board_display.square_size,
-                            Qt.KeepAspectRatio,
-                            Qt.SmoothTransformation)
+            
+        # Scale using the board display's actual square size
+        square_size = self.board_display.square_size
+        return pixmap.scaled(square_size, square_size, 
+                           Qt.KeepAspectRatio, 
+                           Qt.SmoothTransformation)
 
     def save_game_with_notes(self):
         """Save the game PGN with move notes."""
@@ -1541,12 +1578,23 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         @brief Configure Stockfish engine for play at specified ELO.
         @param elo The target ELO rating.
         """
-        user_elo = max(400, min(3000, elo))
-        effective_elo = max(1320, user_elo)
+        # Clamp ELO between Stockfish's minimum (1320) and maximum (3000)
+        user_elo = max(200, min(3000, elo))
+        
+        # For ELO requests below 1320, we'll reduce the skill level further
+        # to simulate weaker play while keeping UCI_Elo at the minimum
+        if elo < 1320:
+            # Scale skill level from 0-5 for ELO range 400-1320
+            skill_level = max(0, min(5, (elo - 400) // 184))
+        else:
+            # Scale skill level from 6-20 for ELO range 1320-3000
+            skill_level = min(20, max(6, (user_elo - 1320) // 84))
+        
+        # Configure the engine
         self.engine.configure({
             "UCI_LimitStrength": True,
-            "UCI_Elo": effective_elo,
-            "Skill Level": min(20, max(0, (effective_elo - 1000) // 100)),
+            "UCI_Elo": user_elo,
+            "Skill Level": skill_level,
         })
 
     def start_game_vs_computer(self, player_color, elo):
@@ -1571,7 +1619,8 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         self.update_display()
         
         if self.computer_color == chess.WHITE:
-            self.make_computer_move()
+            QTimer.singleShot(500, self.make_computer_move)
+            
         self.has_been_analyzed = False
 
     def make_computer_move(self):

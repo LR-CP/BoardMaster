@@ -402,7 +402,7 @@ class PlayStockfishDialog(QDialog):
         elo_layout = QHBoxLayout()
         elo_layout.addWidget(QLabel("Stockfish ELO:"))
         self.elo_combo = QComboBox()
-        elos = ["800", "1000", "1200", "1400", "1600", "1800", "2000", "2200", "2400", "2600"]
+        elos = ["400", "500", "600", "700", "800", "1000", "1200", "1400", "1600", "1800", "2000", "2200", "2400", "2600"]
         self.elo_combo.addItems(elos)
         self.elo_combo.setCurrentText("1400")  # Default ELO
         elo_layout.addWidget(self.elo_combo)
