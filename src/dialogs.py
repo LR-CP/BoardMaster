@@ -8,6 +8,7 @@ import re
 import polars as pl
 
 OPENINGS_LOADED_FLAG = False
+OPENINGS_DB = []  # Initialize as empty list instead of loading immediately
 
 def clean_pgn_moves(pgn_str):
         """Remove move numbers and periods from a PGN string."""
@@ -16,6 +17,10 @@ def clean_pgn_moves(pgn_str):
         return " ".join(moves)
 
 def load_openings():
+    global OPENINGS_DB, OPENINGS_LOADED_FLAG
+    if len(OPENINGS_DB) > 0:
+        return OPENINGS_DB
+    
     # Load the dataset using polars
     df = pl.read_parquet("hf://datasets/Lichess/chess-openings/data/train-00000-of-00001.parquet")
     
@@ -37,9 +42,9 @@ def load_openings():
     df = df.sort("move_count", descending=True)
     
     # Convert to dict format that matches pandas to_dict(orient='records')
-    return df.to_dicts()
-
-OPENINGS_DB = load_openings()
+    OPENINGS_DB = df.to_dicts()
+    OPENINGS_LOADED_FLAG = True
+    return OPENINGS_DB
 
 class HelpDialog(QDialog):
     def __init__(self, parent=None):

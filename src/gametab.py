@@ -680,18 +680,19 @@ Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})
             self.progress.setValue(i + 1)
             QApplication.processEvents()
         
-        global OPENINGS_LOADED_FLAG
-        if OPENINGS_LOADED_FLAG == False:
+        global OPENINGS_DB, OPENINGS_LOADED_FLAG
+        if len(OPENINGS_DB) == 0 or not OPENINGS_LOADED_FLAG:
             dialog = LoadingDialog(title="Loading Openings dataset...", label_text="Please wait while the openings dataset is loaded.")
             dialog.show()
             QApplication.processEvents()
-            load_openings()
+            OPENINGS_DB = load_openings()
             QApplication.processEvents()
             dialog.accept()
             OPENINGS_LOADED_FLAG = True
+
         self.opening = self.get_opening_from_moves(temp_board)
-        self.opening_name = self.opening['name']
-        self.opening_eco = self.opening['eco']
+        self.opening_name = self.opening['name'] if self.opening else "Unknown"
+        self.opening_eco = self.opening['eco'] if self.opening else ""
         if self.opening:
             self.opening_label.setText(f"Opening: {self.opening_name} ({self.opening_eco})")
         else:
