@@ -1,42 +1,78 @@
 # BoardMaster ![BoardMasterLogo](./img/king.ico)
 
-A free chess analysis tool
+A free chess analysis tool for reviewing and improving your chess games. BoardMaster provides powerful analysis features using the Stockfish engine to help players understand their games better.
 
-## Setup
+## Features
 
-### pip
+- Analyze chess games with Stockfish engine integration
+- Interactive board for testing positions
+- Move navigation with evaluation bar
+- Visual arrow indicators for engine suggestions
+- Automatic analysis of moves to identify mistakes and excellent plays
+- PGN import/export support
+- Opening recognition
+- Game vs Stockfish mode
+- Puzzle mode for practice
+- Customizable engine settings
 
-To setup your dev environment you will need to run the following command:
+## Setup Development Environment
 
-`pip install -r requirements.txt`
+### Prerequisites
 
-Ensure you are using **Python 3.10** or higher
+- Python 3.10 or higher
+- pip package manager
+- Git (for cloning the repository)
 
-**OR**
+### Installation Steps
 
-You can run the `setup.sh` script to setup a Python venv and install the `requirements.txt` file automatically.
+1. Clone the repository:
+```sh
+git clone https://github.com/yourusername/BoardMaster.git
+cd BoardMaster
+```
 
-### Stockfish
+2. Install required Python packages:
+```sh
+pip install -r requirements.txt
+```
 
-You will need to download [stockfish](https://stockfishchess.org/download/) to be able to use this program.
+Alternatively, you can use the setup script to create a Python virtual environment:
+```sh
+python setup.py
+```
 
-Once you have downloaded stockfish, follow these steps to add it to your PATH:
+### Stockfish Setup
 
-1. Extract the downloaded zip file onto your PC.
-2. Go into the *stockfish* folder and change the exe name to just `stockfish`.
-3. Copy the *stockfish* folder to your *C:\Program Files* folder.
-4. Open up your Environment Variables window (type environment into your search bar on Windows and open the program titled "Edit the system environment variables")
-5. Press the "Environment Variables..." button at the bottom of the window.
-6. In both the top and bottom panes of the new window, double click the entry with variable name "Path", click the "New" button on the right side of the new window and copy *C:\Program Files\stockfish*.
-7. Press "Enter" and then "OK" on all windows until they are closed.
-8. You may need to reboot your computer or just close and open the terminal to invoke the new Path.
+BoardMaster requires Stockfish chess engine to function. Follow these steps to set it up:
 
-This is everything you need to run the source code.
+1. Download [Stockfish](https://stockfishchess.org/download/) for your operating system
+2. Extract the downloaded zip file and save wherever you'd like on your system (you will be prompted to select the stockfish executable on first launch of the program)
+
+## Running BoardMaster
+
+1. Navigate to the project directory:
+```sh
+cd BoardMaster
+```
+
+1. Run the main application:
+```sh
+python src/BoardMaster.py
+```
+
+1. On first launch, you'll be prompted to configure the Stockfish engine path in Settings
+
+## Configuration
+
+- Engine settings can be adjusted in Tools > Settings
+- Customize analysis depth, number of lines, engine threads, and memory allocation
+- Configure game directory for PGN files
 
 ## License
 
-This program is licensed under the GNU General Public License and can be seen in the [LICENSE](./LICENSE) file
+This project is licensed under the GNU General Public License - see the [LICENSE](./LICENSE) file for details.
 
-## Citations
+## Credits
 
-Logo used from https://www.iconfinder.com/search?q=chess+king&price=free
+- Chess piece icons from [IconFinder](https://www.iconfinder.com/search?q=chess+king&price=free)
+- Stockfish chess engine
