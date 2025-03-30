@@ -5,8 +5,8 @@ import chess.engine
 import chess.svg
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMenu, QLineEdit
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtCore import Qt, QByteArray, QPointF
-from PySide6.QtGui import QPainter, QIcon, QColor, QAction, QPen, QPixmap
+from PySide6.QtCore import Qt, QByteArray, QPointF, QMimeData, QPoint
+from PySide6.QtGui import QPainter, QIcon, QColor, QAction, QPen, QPixmap, QDrag
 
 class ChessBoard(QSvgWidget):
     def __init__(self, engine : chess.engine = None, threads=None, multipv=None, mem=None, time=None, depth=None, parent=None):
@@ -38,11 +38,12 @@ class ChessBoard(QSvgWidget):
         self.selected_square = None
         self.legal_moves = []
         self.highlight_moves = []  # NEW: stores squares to highlight for legal moves
-        # Drag/drop state
         self.dragging = False
         self.drag_start_square = None
         self.drag_current_pos = None
         self.drag_offset = None
+        self.game_tab = parent
+        self.setAcceptDrops(True)  # Add this line to explicitly enable drops
         self.update_board()
 
     def update_board(self):
@@ -158,79 +159,111 @@ class ChessBoard(QSvgWidget):
         return file_idx, rank_idx
 
     def mousePressEvent(self, event):
-        """
-        @brief Handle the mouse press event for drag and selection.
-        @param event The mouse event.
-        """
-        pos = event.position()  # localPos()
+        """Handle mouse press events for piece movement."""
+        pos = event.position()
         file_idx, rank_idx = self.map_position_to_square(pos)
         square = chess.square(file_idx, rank_idx)
-        
-        # NEW: If in edit mode, show the piece dropdown and exit.
-        if self.edit_mode:
-            self.show_piece_menu(event.globalPos(), square)
-            return
-
         piece = self.board.piece_at(square)
-        if event.button() == Qt.LeftButton and piece is not None:
-            # NEW: Add highlight moves
+        
+        if event.button() == Qt.LeftButton and piece:
+            # Create drag object
+            drag = QDrag(self)
+            mime_data = QMimeData()
+            mime_data.setText(str(square))
+            drag.setMimeData(mime_data)
+            
+            # Set drag pixmap
+            pixmap = self.get_piece_pixmap(piece)
+            drag.setPixmap(pixmap)
+            drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
+            
+            # Show legal moves
             legal = [move for move in self.board.legal_moves if move.from_square == square]
             self.highlight_moves = [move.to_square for move in legal]
-            self.dragging = True
-            self.drag_start_square = square
+            self.update()
             
-            # NEW: Handle piece position calculation for both normal and flipped board
-            if self.board_orientation == chess.WHITE:
-                target_top_left = QPointF(
-                    file_idx * self.square_size,
-                    (7 - rank_idx) * self.square_size
-                )
-            else:
-                target_top_left = QPointF(
-                    (7 - file_idx) * self.square_size,
-                    rank_idx * self.square_size
-                )
-                
-            self.drag_offset = pos - target_top_left
-            self.drag_current_pos = pos
-        else:
-            super().mousePressEvent(event)
-        self.update()
+            # Execute drag with proper flags
+            result = drag.exec(Qt.MoveAction | Qt.CopyAction)
+            
+            # Clear highlights
+            self.highlight_moves = []
+            self.update()
+            return
 
     def mouseMoveEvent(self, event):
-        """
-        @brief Handle the mouse move event for drag operations.
-        @param event The mouse event.
-        """
+        """Handle mouse move events."""
         if self.dragging:
             self.drag_current_pos = event.position()
             self.update()
-        else:
-            super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        """
-        @brief Finalize the move on mouse release.
-        @param event The mouse event.
-        """
-        if self.dragging:
+        """Handle mouse release events."""
+        if self.dragging and self.drag_start_square is not None:
             pos = event.position()
             file_idx, rank_idx = self.map_position_to_square(pos)
             drop_square = chess.square(file_idx, rank_idx)
             
             move = chess.Move(self.drag_start_square, drop_square)
-            
             if move in self.board.legal_moves:
+                self.move_stack.append(self.board.fen())
                 self.board.push(move)
-                self.move_stack.append(self.board.fen())  # Save state for undo
+                self.best_moves = []
+                self.update_board()
+                
             self.dragging = False
             self.drag_start_square = None
             self.drag_current_pos = None
             self.drag_offset = None
             self.highlight_moves = []
-            self.update_board()  # This will update the FEN display
+            self.update()
+
+    def dragEnterEvent(self, event):
+        """Handle drag enter events."""
+        if event.mimeData().hasText():
+            event.setAccepted(True)
+            event.accept()  # Explicitly accept the event
         else:
-            super().mouseReleaseEvent(event)
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        """Handle drag move events."""
+        pos = event.position()
+        if 0 <= pos.x() <= self.width() and 0 <= pos.y() <= self.height():
+            square = self.square_at_position(pos)
+            if square is not None:
+                event.setAccepted(True)
+                event.accept()
+                return
+        event.ignore()
+
+    def dropEvent(self, event):
+        """Handle drop events."""
+        pos = event.position()
+        to_square = self.square_at_position(pos)
+        
+        if to_square is not None and event.mimeData().hasText():
+            from_square = int(event.mimeData().text())
+            move = chess.Move(from_square, to_square)
+            
+            if move in self.board.legal_moves:
+                self.move_stack.append(self.board.fen())
+                self.board.push(move)
+                self.best_moves = []
+                self.update_board()
+                event.acceptProposedAction()
+                return
+        
+        event.ignore()
+
+    def square_at_position(self, pos):
+        """Convert screen coordinates to chess square."""
+        # Convert position to file and rank indices
+        file_idx, rank_idx = self.map_position_to_square(pos)
+        
+        # Check if indices are valid
+        if 0 <= file_idx < 8 and 0 <= rank_idx < 8:
+            return chess.square(file_idx, rank_idx)
+        return None
 
     def show_piece_menu(self, pos, square):
         """
@@ -250,92 +283,45 @@ class ChessBoard(QSvgWidget):
 
     def paintEvent(self, event):
         """
-        @brief Overridden paint event to draw overlays and drag images.
+        @brief Paint the board and any overlays.
         @param event The paint event.
         """
         super().paintEvent(event)
         painter = QPainter(self)
         
-        # NEW: Add global_offset calculation like in gametab.py
-        board_size = 8 * self.square_size
-        global_offset = (self.width() - board_size) / 2
-
-        if self.selected_square is not None:
-            file = chess.square_file(self.selected_square)
-            rank = 7 - chess.square_rank(self.selected_square)
-            painter.fillRect(file * self.square_size, rank * self.square_size, self.square_size, self.square_size, QColor(200, 200, 0, 100))
-
-            for move in self.legal_moves:
-                to_file = chess.square_file(move.to_square)
-                to_rank = 7 - chess.square_rank(move.to_square)
-                painter.fillRect(to_file * self.square_size, to_rank * self.square_size, self.square_size, self.square_size, QColor(0, 200, 0, 100))
-
-        # Updated circle drawing with correct offset
+        # Draw highlighted moves
         if self.highlight_moves:
             painter.setRenderHint(QPainter.Antialiasing, True)
-            pen = QPen(QColor(0, 150, 0, 200), 2)  # Reduced pen width
+            pen = QPen(QColor(0, 150, 0, 200), 2)
             painter.setPen(pen)
             brush = QColor(0, 150, 0, 100)
             painter.setBrush(brush)
             for sq in self.highlight_moves:
                 file = chess.square_file(sq)
                 rank = 7 - chess.square_rank(sq)
-                # Calculate center position based on square coordinates
+                if self.board_orientation == chess.BLACK:
+                    file = 7 - file
+                    rank = 7 - rank
                 square_center_x = (file + 0.5) * self.square_size
                 square_center_y = (rank + 0.5) * self.square_size
                 center = QPointF(square_center_x, square_center_y)
-                radius = self.square_size / 5  # Smaller radius (was /3)
+                radius = self.square_size / 5
                 painter.drawEllipse(center, radius, radius)
-
-        # if self.best_moves: # Keep maybe can change arrows to use this
-        #     pen = QPen(QColor(255, 0, 0))
-        #     pen.setWidth(3)
-        #     painter.setPen(pen)
-
-        #     for move in self.best_moves:
-        #         from_square = move.from_square
-        #         to_square = move.to_square
-
-        #         from_x = (chess.square_file(from_square) + 0.5) * self.square_size
-        #         from_y = (7 - chess.square_rank(from_square) + 0.5) * self.square_size
-        #         to_x = (chess.square_file(to_square) + 0.5) * self.square_size
-        #         to_y = (7 - chess.square_rank(to_square) + 0.5) * self.square_size
-
-        #         painter.drawLine(from_x, from_y, to_x, to_y)
-
-        if self.dragging and self.drag_start_square is not None and self.drag_current_pos is not None:
-            piece = self.board.piece_at(self.drag_start_square)
-            if piece:
-                # Draw the piece image instead of text
-                pixmap = self.get_piece_pixmap(piece)
-                target_pos = self.drag_current_pos - self.drag_offset
-                painter.drawPixmap(target_pos, pixmap)
 
         painter.end()
 
     def get_piece_pixmap(self, piece):
         """
-        @brief Get the image pixmap for a chess piece.
+        @brief Get SVG pixmap for a chess piece.
         @param piece The chess piece.
         @return A QPixmap of the piece.
         """
-        prefix = "w" if piece.color == chess.WHITE else "b"
-        letter = piece.symbol().upper()
-        if getattr(sys, 'frozen', False):  # Detects if running as a compiled executable
-            base_path = os.path.dirname(sys.executable)
-        else:
-            base_path = os.path.dirname(os.path.abspath(sys.argv[0]))
-        path = f"{base_path}/piece_images/{prefix.lower()}{letter.lower()}.png"
-        pixmap = QPixmap(path)
-        if pixmap.isNull():
-            print(f"Error: Failed to load image from {path}")
-            pixmap = QPixmap(self.square_size, self.square_size)
-            pixmap.fill(Qt.transparent)
-            temp_painter = QPainter(pixmap)
-            temp_painter.setPen(Qt.black)
-            temp_painter.drawText(pixmap.rect(), Qt.AlignCenter, piece.symbol())
-            temp_painter.end()
-        return pixmap.scaled(self.square_size, self.square_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        piece_svg = chess.svg.piece(piece)
+        pixmap = QPixmap(100, 100)  # Fixed size for drag image
+        pixmap.loadFromData(piece_svg.encode(), 'SVG')
+        return pixmap.scaled(self.square_size, self.square_size, 
+                           Qt.KeepAspectRatio, 
+                           Qt.SmoothTransformation)
 
     def rebuild_board_state(self):
         """Rebuild the board state and prepare for analysis"""
