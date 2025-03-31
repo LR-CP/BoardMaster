@@ -22,3 +22,4 @@ release/Linux/piece_images/
 *.bin
 *.run
 *.sed
+*.ipynb

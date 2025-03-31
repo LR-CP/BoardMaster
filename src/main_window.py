@@ -105,6 +105,11 @@ class BoardMaster(QMainWindow):
 
 
         tool_menu = menubar.addMenu("&Tools")
+        board_editor_action = QAction("Open Board Editor", self)
+        board_editor_action.setShortcut(QKeySequence("Ctrl+B"))
+        board_editor_action.triggered.connect(lambda: self.open_interactive_board(be_mode=True))
+        tool_menu.addAction(board_editor_action)
+
         interactive_board_action = QAction("Play Current Position", self)
         interactive_board_action.setShortcut(QKeySequence("Ctrl+P"))
         interactive_board_action.triggered.connect(self.open_interactive_board)
@@ -379,11 +384,11 @@ class BoardMaster(QMainWindow):
         self.new_tab.hdrs["Termination"] = ""
         self.tab_widget.addTab(self.new_tab, f"Live Game {self.lg_ctr}")
 
-    def open_interactive_board(self):
+    def open_interactive_board(self, be_mode):
         """
         @brief Open the interactive board with current position.
         """
-        if self.new_tab:
+        if self.new_tab and not be_mode:
             fen=self.new_tab.current_board.fen()
         else:
             fen = None

@@ -3,10 +3,35 @@ import os
 import chess
 import chess.engine
 import chess.svg
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMenu, QLineEdit
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QMenu, QLineEdit, QDialog
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtCore import Qt, QByteArray, QPointF, QMimeData, QPoint
 from PySide6.QtGui import QPainter, QIcon, QColor, QAction, QPen, QPixmap, QDrag
+
+class PromotionDialog(QDialog):
+    def __init__(self, color, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Choose Promotion Piece")
+        layout = QHBoxLayout()
+        
+        pieces = ['q', 'r', 'b', 'n'] if color == chess.BLACK else ['Q', 'R', 'B', 'N']
+        self.selected_piece = None
+        
+        for piece in pieces:
+            button = QPushButton()
+            piece_svg = chess.svg.piece(chess.Piece.from_symbol(piece))
+            pixmap = QPixmap(50, 50)
+            pixmap.loadFromData(piece_svg.encode())
+            button.setIcon(QIcon(pixmap))
+            button.setIconSize(pixmap.size())
+            button.clicked.connect(lambda checked, p=piece: self.select_piece(p))
+            layout.addWidget(button)
+            
+        self.setLayout(layout)
+
+    def select_piece(self, piece):
+        self.selected_piece = piece
+        self.accept()
 
 class ChessBoard(QSvgWidget):
     def __init__(self, engine : chess.engine = None, threads=None, multipv=None, mem=None, time=None, depth=None, parent=None):
@@ -50,10 +75,14 @@ class ChessBoard(QSvgWidget):
         """
         @brief Render and update the board display.
         """
+        # Get king square if in check
+        check = self.board.king(self.board.turn) if self.board.is_check() else None
+        
         board_svg = chess.svg.board(
             self.board,
             size=self.board_size,
-            orientation=self.board_orientation
+            orientation=self.board_orientation,
+            check=check  # Add check parameter
         )
         self.load(QByteArray(board_svg.encode("utf-8")))
         self.update()
@@ -159,36 +188,43 @@ class ChessBoard(QSvgWidget):
         return file_idx, rank_idx
 
     def mousePressEvent(self, event):
-        """Handle mouse press events for piece movement."""
+        """Handle mouse press events for piece movement and editing."""
         pos = event.position()
         file_idx, rank_idx = self.map_position_to_square(pos)
         square = chess.square(file_idx, rank_idx)
-        piece = self.board.piece_at(square)
-        
-        if event.button() == Qt.LeftButton and piece:
-            # Create drag object
-            drag = QDrag(self)
-            mime_data = QMimeData()
-            mime_data.setText(str(square))
-            drag.setMimeData(mime_data)
-            
-            # Set drag pixmap
-            pixmap = self.get_piece_pixmap(piece)
-            drag.setPixmap(pixmap)
-            drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
-            
-            # Show legal moves
-            legal = [move for move in self.board.legal_moves if move.from_square == square]
-            self.highlight_moves = [move.to_square for move in legal]
-            self.update()
-            
-            # Execute drag with proper flags
-            result = drag.exec(Qt.MoveAction | Qt.CopyAction)
-            
-            # Clear highlights
-            self.highlight_moves = []
-            self.update()
+
+        # Handle right-click in edit mode
+        if event.button() == Qt.RightButton and self.edit_mode:
+            self.show_piece_menu(event.globalPos(), square)
             return
+
+        # Regular piece movement logic
+        if not self.edit_mode and event.button() == Qt.LeftButton:
+            piece = self.board.piece_at(square)
+            if piece:
+                # Create drag object
+                drag = QDrag(self)
+                mime_data = QMimeData()
+                mime_data.setText(str(square))
+                drag.setMimeData(mime_data)
+                
+                # Set drag pixmap
+                pixmap = self.get_piece_pixmap(piece)
+                drag.setPixmap(pixmap)
+                drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
+                
+                # Show legal moves
+                legal = [move for move in self.board.legal_moves if move.from_square == square]
+                self.highlight_moves = [move.to_square for move in legal]
+                self.update()
+                
+                # Execute drag
+                result = drag.exec(Qt.MoveAction | Qt.CopyAction)
+                
+                # Clear highlights
+                self.highlight_moves = []
+                self.update()
+                return
 
     def mouseMoveEvent(self, event):
         """Handle mouse move events."""
@@ -243,7 +279,18 @@ class ChessBoard(QSvgWidget):
         
         if to_square is not None and event.mimeData().hasText():
             from_square = int(event.mimeData().text())
-            move = chess.Move(from_square, to_square)
+            
+            # Check if this is a pawn promotion move
+            piece = self.board.piece_at(from_square)
+            is_promotion = (piece is not None and piece.piece_type == chess.PAWN and 
+                          ((to_square >= 56 and piece.color == chess.WHITE) or
+                           (to_square <= 7 and piece.color == chess.BLACK)))
+            
+            if is_promotion:
+                promotion_piece = self.get_promotion_piece(piece.color)
+                move = chess.Move(from_square, to_square, promotion=promotion_piece.piece_type)
+            else:
+                move = chess.Move(from_square, to_square)
             
             if move in self.board.legal_moves:
                 self.move_stack.append(self.board.fen())
@@ -335,6 +382,13 @@ class ChessBoard(QSvgWidget):
         """Set whose turn it is to move"""
         self.board.turn = color
         self.update_board()
+
+    def get_promotion_piece(self, color):
+        """Show promotion dialog and return selected piece"""
+        dialog = PromotionDialog(color, self)
+        if dialog.exec() == QDialog.Accepted and dialog.selected_piece:
+            return chess.Piece.from_symbol(dialog.selected_piece)
+        return chess.Piece.from_symbol('q' if color == chess.BLACK else 'Q')  # Default to queen
 
 class BoardEditor(QMainWindow):
     def __init__(self, engine : chess.engine = None, fen=None, threads=4, multipv=3, mem=128, time=0.1, depth=50):
@@ -432,7 +486,7 @@ class BoardEditor(QMainWindow):
     def toggle_turn(self):
         """Toggle between White and Black to move"""
         self.board_widget.board.turn = not self.board_widget.board.turn
-        button_text = "Black to Move" if self.board_widget.board.turn else "White to Move"
+        button_text = "White to Move" if self.board_widget.board.turn else "Black to Move"
         self.board_widget.update_board()
         self.turn_button.setText(button_text)
 
