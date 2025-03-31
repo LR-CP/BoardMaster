@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import *
-from PySide6.QtCore import QSettings, Qt, QStringListModel
-from PySide6.QtGui import QIcon, QPalette, QColor
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import QIcon, QPixmap
 import os
 import chess.pgn
 import io
@@ -652,3 +652,28 @@ class OpeningSearchDialog(QDialog):
             QMessageBox.warning(self, "Opening Not Found", 
                               "The selected opening could not be found in the database.",
                               QMessageBox.Ok)
+
+class PromotionDialog(QDialog):
+    def __init__(self, color, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Choose Promotion Piece")
+        layout = QHBoxLayout()
+        
+        pieces = ['q', 'r', 'b', 'n'] if color == chess.BLACK else ['Q', 'R', 'B', 'N']
+        self.selected_piece = None
+        
+        for piece in pieces:
+            button = QPushButton()
+            piece_svg = chess.svg.piece(chess.Piece.from_symbol(piece))
+            pixmap = QPixmap(50, 50)
+            pixmap.loadFromData(piece_svg.encode())
+            button.setIcon(QIcon(pixmap))
+            button.setIconSize(pixmap.size())
+            button.clicked.connect(lambda checked, p=piece: self.select_piece(p))
+            layout.addWidget(button)
+            
+        self.setLayout(layout)
+
+    def select_piece(self, piece):
+        self.selected_piece = piece
+        self.accept()

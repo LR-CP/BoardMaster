@@ -14,7 +14,7 @@ from PySide6.QtCore import QByteArray, QSettings, Qt, QPointF, QRectF, QMimeData
 from PySide6.QtGui import QPainter, QColor, QPixmap, QPen, QFont, QDrag
 import math
 from utils import MoveRow, EvaluationGraphPG
-from dialogs import LoadingDialog, clean_pgn_moves, load_openings, OPENINGS_DB, OPENINGS_LOADED_FLAG
+from dialogs import LoadingDialog, clean_pgn_moves, load_openings, OPENINGS_DB, OPENINGS_LOADED_FLAG, PromotionDialog
 
 class CustomSVGWidget(QSvgWidget):
     def __init__(self, parent=None):
@@ -35,19 +35,6 @@ class CustomSVGWidget(QSvgWidget):
         self.setAcceptDrops(True)  # Add this line to explicitly enable drops
         self.game_tab = parent  # Store reference to GameTab parent
     
-    # def resizeEvent(self, event):
-    #     # Set minimum padding around the board (in pixels)
-    #     padding = 30
-        
-    #     # Calculate available space accounting for padding
-    #     available_width = self.width() - (2 * padding)
-    #     available_height = self.height() - (2 * padding)
-        
-    #     # Use the smaller dimension to ensure square fits
-    #     self.square_size = min(available_width, available_height) / 8
-
-    #     super().resizeEvent(event)
-
     def resizeEvent(self, event):
         """
         Handle resize events to maintain a square board.
@@ -75,7 +62,6 @@ class CustomSVGWidget(QSvgWidget):
         # Calculate global offsets to center the board
         global_offset_x = (self.width() - board_size) / 2
         global_offset_y = (self.height() - board_size) / 2
-        # global_offset = (self.width() - board_size) / 2
 
         # Map a chess square to its (file, rank) coordinates with proper flipping
         def get_square_coordinates(square):
@@ -191,7 +177,27 @@ class CustomSVGWidget(QSvgWidget):
         if square is not None and event.mimeData().hasText():
             from_square = int(event.mimeData().text())
             if self.game_tab:
-                move = chess.Move(from_square, square)
+                # Check if this would be a pawn promotion move
+                is_promotion = (
+                    self.game_tab.current_board.piece_type_at(from_square) == chess.PAWN and
+                    ((chess.square_rank(square) == 7 and self.game_tab.current_board.turn == chess.WHITE) or
+                     (chess.square_rank(square) == 0 and self.game_tab.current_board.turn == chess.BLACK))
+                )
+                
+                if is_promotion:
+                    # Show promotion dialog
+                    dialog = PromotionDialog(self.game_tab.current_board.turn)
+                    if dialog.exec() == QDialog.Accepted and dialog.selected_piece:
+                        # Create move with promotion
+                        promotion_piece = chess.Piece.from_symbol(dialog.selected_piece).piece_type
+                        move = chess.Move(from_square, square, promotion=promotion_piece)
+                    else:
+                        event.ignore()
+                        return
+                else:
+                    # Regular move
+                    move = chess.Move(from_square, square)
+
                 if move in self.game_tab.current_board.legal_moves:
                     # First update the board display immediately
                     self.game_tab.current_board.push(move)
@@ -245,62 +251,6 @@ class CustomSVGWidget(QSvgWidget):
         if 0 <= file_idx < 8 and 0 <= rank_idx < 8:
             return chess.square(file_idx, rank_idx)
         return None
-
-    # def mousePressEvent(self, event):
-    #     """Handle mouse press events for piece movement."""
-    #     pos = event.localPos()
-    #     board_size = 8 * self.board_display.square_size
-    #     global_offset = (self.board_display.width() - board_size) / 2
-
-    #     # Check if click is within board boundaries
-    #     if not self.is_within_board(pos):
-    #         return super().mousePressEvent(event)
-
-    #     # Calculate square coordinates
-    #     adjusted_x = pos.x() - global_offset
-    #     adjusted_y = pos.y() - global_offset
-    #     if self.flipped:
-    #         file_idx = 7 - int(adjusted_x // self.board_display.square_size)
-    #         rank_idx = int(adjusted_y // self.board_display.square_size)
-    #     else:
-    #         file_idx = int(adjusted_x // self.board_display.square_size)
-    #         rank_idx = 7 - int(adjusted_y // self.board_display.square_size)
-    #     square = chess.square(file_idx, rank_idx)
-    #     piece = self.current_board.piece_at(square)
-
-    #     # Left-click on an empty square: clear drawn arrows and circles (added back)
-    #     if event.button() == Qt.LeftButton:
-    #         self.arrows = []
-    #         self.user_circles = set()
-    #         self.board_display.user_circles = self.user_circles
-    #         self.board_display.repaint()
-
-    #     # Right-click: start arrow/circle drawing
-    #     if event.button() == Qt.RightButton:
-    #         self.arrow_start = square
-    #         self.current_arrow = (square, square)
-    #         event.accept()
-    #         self.board_display.repaint()
-    #         return
-
-    #     # Left-click on a piece: begin drag (existing code)
-    #     if event.button() == Qt.LeftButton and piece:
-    #         drag = QDrag(self.board_display)
-    #         mime_data = QMimeData()
-    #         mime_data.setText(str(square))
-    #         drag.setMimeData(mime_data)
-    #         pixmap = self.get_piece_pixmap(piece)
-    #         drag.setPixmap(pixmap)
-    #         drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
-    #         legal_moves = [move for move in self.current_board.legal_moves if move.from_square == square]
-    #         self.board_display.highlight_moves = [move.to_square for move in legal_moves]
-    #         self.board_display.repaint()
-    #         result = drag.exec(Qt.MoveAction)
-    #         self.board_display.highlight_moves = []
-    #         self.board_display.repaint()
-    #         return
-# 
-        # super().mousePressEvent(event)
 
 class GameTab(QWidget):
     def __init__(self, parent=None):
@@ -599,16 +549,6 @@ White: {self.hdrs.get('White')}({self.hdrs.get('WhiteElo')})
 Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})
 {self.hdrs.get('Date')}\nResult: {self.hdrs.get('Termination')}
 """
-            #             game_detail_text_no_opening = f"""
-# White: {self.hdrs.get('White')}({self.hdrs.get('WhiteElo')})
-# Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})
-# {self.hdrs.get('Date')}\nResult: {self.hdrs.get('Termination')}
-
-
-#             """
-            # if self.hdrs["Opening"] is None or is_analysis == True:
-            #     self.game_details.setText(game_detail_text_no_opening)
-            # else:
             self.game_details.setText(game_detail_text)
 
         except Exception as e:
@@ -623,7 +563,6 @@ Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})
             self.current_board = self.current_game.board()
             self.current_move_index = 0
             self.has_been_analyzed = False
-            # self.analyze_button.setVisible(True)
             self.update_display()
             self.update_game_summary()
             self.loading_bar.close()
@@ -880,22 +819,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 )
                 eval_score = self.eval_to_cp(info[0]["score"].relative)
 
-        # if self.selected_square is not None:
-        #     squares[self.selected_square] = QColor(100, 100, 0, 100)
-        #     for move in self.legal_moves:
-        #         squares[move.to_square] = QColor(0, 100, 0, 100)
-
-        if self.current_move_index > 0 and self.moves:
-            last_move = self.moves[self.current_move_index - 1]
-            # squares[last_move.to_square] = QColor(128, 0, 128, 100)
-            # squares[last_move.from_square] = QColor(128, 0, 128, 100)
-            # prev_move_color = QColor(128, 0, 128, 100)
-            # arrows.append(chess.svg.Arrow(
-            #     tail=last_move.from_square,
-            #     head=last_move.to_square,
-            #     color=prev_move_color.name()
-            # ))
-
         if self.current_board.is_check():
             king_square = self.current_board.king(self.current_board.turn)
             if king_square is not None:
@@ -908,7 +831,7 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         board_svg = chess.svg.board(
             self.current_board,
             arrows=arrows,
-            lastmove=lastmove, #TODO: Get this working for highlighting
+            lastmove=lastmove,
             size=board_size,
             check=check,
             orientation=chess.BLACK if self.flipped else chess.WHITE
@@ -967,8 +890,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
                 opening_name = self.opening['name']
                 opening_eco = self.opening['eco']
                 self.opening_label.setText(f"Opening: {opening_name} ({opening_eco})")
-            # else:
-            #     self.opening_label.setText("Opening: Unknown")
 
         # Always update the move list regardless of game type
         self.move_list.clear()
@@ -1190,7 +1111,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
 
         # Convert game to PGN string
         pgn_text = str(game)
-        # pgn_text = str(node)
 
         # Create a filename
         if self.is_live_game:
@@ -1205,48 +1125,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         filename = f"{white}_{black}_{date}.pgn"
 
         return pgn_text, filename
-
-    ## NEW METHODS FOR SAVING/LOADING ANALYSIS ##
-    def rebuild_pgn_from_move_list(self):
-        """
-        Rebuild the PGN directly from the move_list (the visible move list widget).
-        This ensures that the saved PGN reflects exactly what the user sees, including notes.
-        """
-        # Apply headers if available
-        if hasattr(self, 'hdrs') and self.hdrs.items():
-            for key, value in self.hdrs.items():
-                self.current_game.headers[key] = value
-
-        if "Termination" in self.current_game.headers:
-            self.current_game.headers["Result"] = self.current_game.headers.pop("Termination", "*")
-
-        node = self.current_game
-
-        move_count = len(self.moves)
-        for row in range(self.move_list.count()):
-            item = self.move_list.item(row)
-            move_row = self.move_list.itemWidget(item)
-
-            if not isinstance(move_row, MoveRow):
-                continue  # Skip non-move rows like variation headers if they exist.
-
-            # Process white move (always present in MoveRow)
-            if move_row.white_label:
-                move_index = move_row.white_label.move_index
-                if move_index < move_count:
-                    node = node.add_main_variation(self.moves[move_index])
-                    if move_row.white_label.note:
-                        node.comment = move_row.white_label.note
-
-            # Process black move (optional in MoveRow)
-            if move_row.black_label and move_row.black_label.text().strip():
-                move_index = move_row.black_label.move_index
-                if move_index < move_count:
-                    node = node.add_main_variation(self.moves[move_index])
-                    if move_row.black_label.note:
-                        node.comment = move_row.black_label.note
-
-        return str(self.current_game)
 
     def prev_move(self):
         """
@@ -1290,19 +1168,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         else:
             super().keyPressEvent(event)
         
-    # def is_within_board(self, pos):
-    #     """
-    #     @brief Check if a given position is within the board boundaries.
-    #     @param pos The QPoint position.
-    #     @return True if within boundaries, else False.
-    #     """
-    #     board_size = 8 * self.square_size
-    #     global_offset = (self.board_display.width() - board_size) / 2
-    #     board_x = global_offset
-    #     board_y = global_offset
-    #     return (board_x <= pos.x() <= board_x + board_size and 
-    #             board_y <= pos.y() <= board_y + board_size)
-    
     def is_within_board(self, pos):
         """
         @brief Check if a given position is within the board boundaries.
@@ -1420,16 +1285,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
             self.board_display.update()
             return
 
-        # if self.dragging:
-        #     self.drag_current_pos = event.localPos()
-        #     self.board_display.drag_info = {
-        #         "dragging": True,
-        #         "drag_current_pos": self.drag_current_pos,
-        #         "drag_offset": self.drag_offset,  # constant from the press event
-        #         "pixmap": self.get_piece_pixmap(self.current_board.piece_at(self.drag_start_square))
-        #     }
-        #     self.board_display.repaint()
-        # else:
         super().mouseMoveEvent(event)
     
     def handle_drop_move(self, start_square, drop_square):
@@ -1686,8 +1541,6 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         self.update_display()
         self.update_game_summary()
         self.loading_bar.close()
-        # self.has_been_analyzed = True
-        # self.analyze_button.setVisible(False)
         QMessageBox.information(
             self,
             "Analysis Complete",
