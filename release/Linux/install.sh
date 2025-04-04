@@ -43,6 +43,10 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Modify the desktop file to contain correct path
+sed -i "s/USER/$(whoami)/g" $INSTALL_DIR/BoardMaster.dekstop
+sudo cp $INSTALL_DIR/BoardMaster.dekstop /usr/share/applications/
+
 chmod +x $INSTALL_DIR/BoardMaster.bin
 
 echo ""

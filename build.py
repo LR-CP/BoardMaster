@@ -175,7 +175,16 @@ SourceFiles0={project_dir}\\release\\Windows\\
         subprocess.check_call([iexpress_path, "/N", "/M", sed_path])
         print(f"IExpress installer created at: {target_installer}")
     else:
-        # For Linux, create a self-extracting .run file using makeself.
+        # For Linux, create desktop file and create a self-extracting .run file using makeself.
+        with open(os.path.join(release_dir, "BoardMaster.desktop")) as dfile:
+            dfile.write("""[Desktop Entry]
+Encoding=UTF-8
+Version=1.0
+Type=Application
+Icon=/home/USER/BoardMaster/king.ico
+Terminal=false
+Exec=/home/USER/BoardMaster/BoardMaster.bin
+Name=BoardMaster""")
         run_installer = os.path.join(release_dir, "BoardMasterInstaller.run")
         installer_script = os.path.join(release_dir, "install.sh")
         if not os.path.exists(installer_script):

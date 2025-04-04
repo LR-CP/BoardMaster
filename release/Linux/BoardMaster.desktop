@@ -1,0 +1,8 @@
+[Desktop Entry]
+Encoding=UTF-8
+Version=1.0
+Type=Application
+Icon=/home/lr/BoardMaster/king.ico
+Terminal=false
+Exec=/home/lr/BoardMaster/BoardMaster.bin
+Name=BoardMaster
