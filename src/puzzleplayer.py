@@ -559,7 +559,8 @@ class ChessPuzzleApp(QMainWindow):
                 QTimer.singleShot(500, self.make_engine_move)
             else:
                 # Puzzle completed successfully
-                QMessageBox.information(self, "Puzzle Complete", "Congratulations! Puzzle solved correctly.")
+                # QMessageBox.information(self, "Puzzle Complete", "Congratulations! Puzzle solved correctly.")
+                msg_box = QMessageBox(self); msg_box.setWindowTitle("Puzzle Complete"); msg_box.setText("Congratulations! Puzzle solved correctly."); next_button = msg_box.addButton("Next", QMessageBox.AcceptRole); msg_box.exec_(); next_button == msg_box.clickedButton() and self.load_next_puzzle()
         else:
             # Incorrect move
             self.show_feedback(False)
