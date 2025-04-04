@@ -1,6 +1,7 @@
+from gettext import install
 import sys
 import random
-import json
+import os
 import csv
 import io
 from pathlib import Path
@@ -15,6 +16,8 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                               QFileDialog, QMessageBox, QSplitter, QFrame)
 from PySide6.QtSvgWidgets import QSvgWidget
 import polars as pl
+
+from dialogs import start_hf_download
 
 PUZZLES_LOADED_FLAG = False
 PUZZLES_DB = None
@@ -253,8 +256,17 @@ class PuzzleManager:
 
         try:
             QApplication.processEvents()
-            df = pl.read_parquet("hf://datasets/Lichess/chess-puzzles/data/train-00000-of-00003.parquet")
+            # df = pl.scan_parquet("hf://datasets/Lichess/chess-puzzles/data/train-00000-of-00003.parquet")
+            abs_pth = os.path.abspath(sys.argv[0])
+            install_dir = os.path.dirname(abs_pth)
+            data_dir = os.path.join(install_dir, "datasets")
+            if not os.path.exists(data_dir):
+                os.makedirs(data_dir)
+            if not os.path.exists(os.path.join(data_dir, "data", "train-00000-of-00001.parquet")):
+                start_hf_download(repo_id="Lichess/chess-puzzles", hf_filename="data/train-00000-of-00003.parquet", local_dir=data_dir)
+            df = pl.scan_parquet(os.path.join(data_dir, "data", "train-00000-of-00003.parquet"))
             QApplication.processEvents()
+            df = df.collect()
             self.dataframe = df
             PUZZLES_DB = df
             PUZZLES_LOADED_FLAG = True
@@ -491,14 +503,14 @@ class ChessPuzzleApp(QMainWindow):
         right_layout.addStretch(1)
         
         # Buttons
-        load_hf_button = QPushButton("Load from Hugging Face (CSV)")
-        load_hf_parquet_button = QPushButton("Load from Hugging Face (Parquet)")
+        # load_hf_button = QPushButton("Load from CSV")
+        load_hf_parquet_button = QPushButton("Load Puzzles")
         load_file_button = QPushButton("Load from File")
         next_puzzle_button = QPushButton("Next Puzzle")
         reset_button = QPushButton("Reset Current Puzzle")
-        
-        right_layout.addWidget(load_hf_button)
+
         right_layout.addWidget(load_hf_parquet_button)
+        # right_layout.addWidget(load_hf_button)
         right_layout.addWidget(load_file_button)
         right_layout.addWidget(next_puzzle_button)
         right_layout.addWidget(reset_button)
@@ -519,7 +531,7 @@ class ChessPuzzleApp(QMainWindow):
         
         # Connect signals
         self.chess_board.move_made.connect(self.handle_move_made)
-        load_hf_button.clicked.connect(self.load_puzzles_from_hf)
+        # load_hf_button.clicked.connect(self.load_puzzles_from_hf)
         load_hf_parquet_button.clicked.connect(self.load_puzzles_from_hf_parquet)
         load_file_button.clicked.connect(self.load_puzzles_from_file)
         next_puzzle_button.clicked.connect(self.load_next_puzzle)
@@ -579,22 +591,22 @@ class ChessPuzzleApp(QMainWindow):
         """Clear the feedback message."""
         self.feedback_label.setText("")
     
-    def load_puzzles_from_hf(self):
-        """Load puzzles from Hugging Face dataset (CSV)."""
-        self.status_label.setText("Loading puzzles from Hugging Face (CSV)...")
-        QApplication.processEvents()
+    # def load_puzzles_from_hf(self):
+    #     """Load puzzles from Hugging Face dataset (CSV)."""
+    #     self.status_label.setText("Loading puzzles from Hugging Face (CSV)...")
+    #     QApplication.processEvents()
         
-        min_rating = int(self.min_rating_combo.currentText())
-        max_rating = int(self.max_rating_combo.currentText())
+    #     min_rating = int(self.min_rating_combo.currentText())
+    #     max_rating = int(self.max_rating_combo.currentText())
         
-        success = self.puzzle_manager.load_puzzles_from_hf(min_rating, max_rating)
+    #     success = self.puzzle_manager.load_puzzles_from_hf(min_rating, max_rating)
         
-        if success:
-            self.status_label.setText(f"Loaded {len(self.puzzle_manager.puzzles)} puzzles")
-            self.load_next_puzzle()
-        else:
-            self.status_label.setText("Failed to load puzzles")
-            QMessageBox.warning(self, "Error", "Failed to load puzzles from Hugging Face. Check your internet connection.")
+    #     if success:
+    #         self.status_label.setText(f"Loaded {len(self.puzzle_manager.puzzles)} puzzles")
+    #         self.load_next_puzzle()
+    #     else:
+    #         self.status_label.setText("Failed to load puzzles")
+    #         QMessageBox.warning(self, "Error", "Failed to load puzzles from Hugging Face. Check your internet connection.")
     
     def load_puzzles_from_hf_parquet(self):
         """Load puzzles from Hugging Face dataset (Parquet)."""

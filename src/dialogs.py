@@ -1,11 +1,15 @@
+from fileinput import filename
 from PySide6.QtWidgets import *
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QSettings, Qt, Signal, QThread
 from PySide6.QtGui import QIcon, QPixmap
 import os
 import chess.pgn
 import io
 import re
 import polars as pl
+import requests
+import sys
+from huggingface_hub import hf_hub_download
 
 OPENINGS_LOADED_FLAG = False
 OPENINGS_DB = []  # Initialize as empty list instead of loading immediately
@@ -22,7 +26,15 @@ def load_openings():
         return OPENINGS_DB
     
     # Load the dataset using polars
-    df = pl.read_parquet("hf://datasets/Lichess/chess-openings/data/train-00000-of-00001.parquet")
+    # df = pl.scan_parquet("hf://datasets/Lichess/chess-openings/data/train-00000-of-00001.parquet")
+    abs_pth = os.path.abspath(sys.argv[0])
+    install_dir = os.path.dirname(abs_pth)
+    data_dir = os.path.join(install_dir, "datasets")
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+    if not os.path.exists(os.path.join(data_dir, "data", "train-00000-of-00001.parquet")):
+        start_hf_download(repo_id="Lichess/chess-openings", hf_filename="data/train-00000-of-00001.parquet", local_dir=data_dir)
+    df = pl.scan_parquet(os.path.join(data_dir, "data", "train-00000-of-00001.parquet"))
     
     # Convert pgn column to string type
     df = df.with_columns(pl.col("pgn").cast(pl.Utf8))
@@ -40,6 +52,8 @@ def load_openings():
     
     # Sort by move count descending
     df = df.sort("move_count", descending=True)
+
+    df = df.collect()
     
     # Convert to dict format that matches pandas to_dict(orient='records')
     OPENINGS_DB = df.to_dicts()
@@ -677,3 +691,120 @@ class PromotionDialog(QDialog):
     def select_piece(self, piece):
         self.selected_piece = piece
         self.accept()
+
+import os
+import time
+import threading
+import sys
+import requests
+from PySide6.QtCore import QThread, Signal
+from PySide6.QtWidgets import QApplication, QDialog, QVBoxLayout, QProgressBar, QLabel
+from huggingface_hub import hf_hub_download, hf_hub_url
+
+class HFDownloader(QThread):
+    # Signal to update progress (0-100)
+    progress = Signal(int)
+    # Signal to notify when download is finished
+    finished = Signal()
+
+    def __init__(self, repo_id, filename, local_dir, revision="main", parent=None):
+        super().__init__(parent)
+        self.repo_id = repo_id
+        self.filename = filename
+        self.local_dir = local_dir
+        self.revision = revision
+
+    def run(self):
+        # Build the URL to perform a HEAD request for file size
+        url = hf_hub_url(self.repo_id, self.filename, revision=self.revision)
+        try:
+            head = requests.head(url)
+            total = int(head.headers.get("content-length", 0))
+        except Exception as e:
+            print("Error getting file size:", e)
+            total = 0
+
+        downloaded_flag = threading.Event()
+        progress_value = [0]  # mutable container to hold progress
+        local_filepath_container = [None]
+
+        def poll_progress(local_filepath):
+            while not downloaded_flag.is_set():
+                try:
+                    if os.path.exists(local_filepath):
+                        current = os.path.getsize(local_filepath)
+                        if total:
+                            new_progress = int(current * 100 / total)
+                            if new_progress != progress_value[0]:
+                                progress_value[0] = new_progress
+                                self.progress.emit(new_progress)
+                except Exception:
+                    pass
+                time.sleep(0.5)
+
+        def download_func():
+            try:
+                # hf_hub_download will download the file to local_dir and return the local file path
+                local_filepath = hf_hub_download(
+                    repo_id=self.repo_id,
+                    filename=self.filename,
+                    revision=self.revision,
+                    local_dir=self.local_dir,
+                    repo_type="dataset"
+                )
+                local_filepath_container[0] = local_filepath
+            except Exception as e:
+                print("Download error:", e)
+            downloaded_flag.set()
+
+        # Start the download in a separate thread (so we can poll concurrently)
+        dl_thread = threading.Thread(target=download_func)
+        dl_thread.start()
+
+        # Wait until the local file path is determined (or the download ends)
+        while local_filepath_container[0] is None and not downloaded_flag.is_set():
+            time.sleep(0.1)
+        # Use the determined file path or a fallback
+        local_filepath = local_filepath_container[0] or os.path.join(self.local_dir, self.filename)
+        
+        # Start a polling thread to update progress based on file size
+        poll_thread = threading.Thread(target=poll_progress, args=(local_filepath,))
+        poll_thread.start()
+
+        dl_thread.join()
+        downloaded_flag.set()
+        poll_thread.join()
+        self.progress.emit(100)
+        self.finished.emit()
+
+class HFDownloadDialog(QDialog):
+    def __init__(self, repo_id, hf_filename, local_dir, revision="main", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Downloading from Hugging Face")
+        layout = QVBoxLayout(self)
+        self.label = QLabel("Downloading...", self)
+        layout.addWidget(self.label)
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setRange(0, 100)
+        layout.addWidget(self.progress_bar)
+        self.downloader = HFDownloader(repo_id, hf_filename, local_dir, revision)
+        self.downloader.progress.connect(self.progress_bar.setValue)
+        self.downloader.finished.connect(self.download_finished)
+        self.downloader.start()
+
+    def download_finished(self):
+        self.label.setText("Download finished!")
+
+def start_hf_download(repo_id, hf_filename, local_dir, revision="main"):
+    """
+    Launches a PySide6 dialog to download a file from a Hugging Face repository.
+    
+    Parameters:
+      repo_id   : Repository ID on Hugging Face (e.g. "username/dataset")
+      hf_filename: Name of the file in the repository to download
+      local_dir : Local directory where the file will be saved
+      revision  : Branch or revision (default: "main")
+    """
+    app = QApplication.instance() or QApplication(sys.argv)
+    dlg = HFDownloadDialog(repo_id, hf_filename, local_dir, revision)
+    dlg.exec()
