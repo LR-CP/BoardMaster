@@ -16,9 +16,9 @@ from main_window import BoardMaster
 if __name__ == "__main__":
     # QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv)
-    pixmap = QPixmap("../img/king.png")
-    splash = QSplashScreen(pixmap, Qt.WindowStaysOnTopHint)
-    splash.show()
+    # pixmap = QPixmap("../img/king.png")
+    # splash = QSplashScreen(pixmap, Qt.WindowStaysOnTopHint)
+    # splash.show()
     QApplication.processEvents()
     window = BoardMaster()
     srcSize = QScreen.availableGeometry(QApplication.primaryScreen())
@@ -27,7 +27,7 @@ if __name__ == "__main__":
     window.move(frmX, frmY)
     if window.engine:
         window.show()
-        splash.finish(window)
+        # splash.finish(window)
         sys.exit(app.exec())
     else:
         sys.exit(1)

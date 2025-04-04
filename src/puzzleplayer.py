@@ -263,7 +263,7 @@ class PuzzleManager:
             if not os.path.exists(data_dir):
                 os.makedirs(data_dir)
             if not os.path.exists(os.path.join(data_dir, "data", "train-00000-of-00001.parquet")):
-                start_hf_download(repo_id="Lichess/chess-puzzles", hf_filename="data/train-00000-of-00003.parquet", local_dir=data_dir)
+                start_hf_download(label_txt="Downloading Puzzle Dataset...", repo_id="Lichess/chess-puzzles", hf_filename="data/train-00000-of-00003.parquet", local_dir=data_dir)
             df = pl.scan_parquet(os.path.join(data_dir, "data", "train-00000-of-00003.parquet"))
             QApplication.processEvents()
             df = df.collect()

@@ -34,12 +34,12 @@ class BoardMaster(QMainWindow):
         global OPENINGS_LOADED_FLAG
         global OPENINGS_DB
         if OPENINGS_LOADED_FLAG is False and self.settings.value("game/load_openings", True, bool):
-            dialog = LoadingDialog()
-            dialog.show()
+            # dialog = LoadingDialog()
+            # dialog.show()
             QApplication.processEvents()
             load_openings()
             QApplication.processEvents()
-            dialog.accept()
+            # dialog.accept()
             
         self.create_gui()
         self.create_menus()

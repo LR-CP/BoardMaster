@@ -1,4 +1,3 @@
-from fileinput import filename
 from PySide6.QtWidgets import *
 from PySide6.QtCore import QSettings, Qt, Signal, QThread
 from PySide6.QtGui import QIcon, QPixmap
@@ -33,7 +32,7 @@ def load_openings():
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
     if not os.path.exists(os.path.join(data_dir, "data", "train-00000-of-00001.parquet")):
-        start_hf_download(repo_id="Lichess/chess-openings", hf_filename="data/train-00000-of-00001.parquet", local_dir=data_dir)
+        start_hf_download(label_txt="Downloading Openings Dataset...", repo_id="Lichess/chess-openings", hf_filename="data/train-00000-of-00001.parquet", local_dir=data_dir)
     df = pl.scan_parquet(os.path.join(data_dir, "data", "train-00000-of-00001.parquet"))
     
     # Convert pgn column to string type
@@ -573,13 +572,13 @@ class OpeningSearchDialog(QDialog):
     
     def initialize_openings(self):
         """Load openings data and set up the completer."""
-        progress = QProgressDialog("Loading openings data...", "Cancel", 0, 100, self)
-        progress.setWindowModality(Qt.WindowModal)
-        progress.show()
+        # progress = QProgressDialog("Loading openings data...", "Cancel", 0, 100, self)
+        # progress.setWindowModality(Qt.WindowModal)
+        # progress.show()
         QApplication.processEvents()
         
         try:
-            progress.setValue(10)
+            # progress.setValue(10)
             QApplication.processEvents()
             # Use the load_openings function (assumed to be defined elsewhere)
             global OPENINGS_LOADED_FLAG
@@ -587,13 +586,13 @@ class OpeningSearchDialog(QDialog):
             if OPENINGS_LOADED_FLAG == False:
                 self.openings_data = load_openings()
                 QApplication.processEvents()
-                progress.setValue(50)
+                # progress.setValue(50)
                 QApplication.processEvents()
                 OPENINGS_LOADED_FLAG = True
             else:
                 self.openings_data = OPENINGS_DB
         except Exception as e:
-            progress.cancel()
+            # progress.cancel()
             print(f"Error loading openings: {e}")
             self.openings_data = []
         
@@ -608,7 +607,7 @@ class OpeningSearchDialog(QDialog):
             # Populate the initial list
             self.results_list.addItems(self.combined_search)
             
-            progress.setValue(100)
+            # progress.setValue(100)
     
     def filter_openings(self, text):
         """Filter both the list widget and ensure the completer shows."""
@@ -778,11 +777,11 @@ class HFDownloader(QThread):
         self.finished.emit()
 
 class HFDownloadDialog(QDialog):
-    def __init__(self, repo_id, hf_filename, local_dir, revision="main", parent=None):
+    def __init__(self, label_txt, repo_id, hf_filename, local_dir, revision="main", parent=None):
         super().__init__(parent)
         self.setWindowTitle("Downloading from Hugging Face")
         layout = QVBoxLayout(self)
-        self.label = QLabel("Downloading...", self)
+        self.label = QLabel(label_txt, self)
         layout.addWidget(self.label)
         self.progress_bar = QProgressBar(self)
         self.progress_bar.setRange(0, 100)
@@ -794,8 +793,9 @@ class HFDownloadDialog(QDialog):
 
     def download_finished(self):
         self.label.setText("Download finished!")
+        self.accept()
 
-def start_hf_download(repo_id, hf_filename, local_dir, revision="main"):
+def start_hf_download(label_txt, repo_id, hf_filename, local_dir, revision="main"):
     """
     Launches a PySide6 dialog to download a file from a Hugging Face repository.
     
@@ -806,5 +806,5 @@ def start_hf_download(repo_id, hf_filename, local_dir, revision="main"):
       revision  : Branch or revision (default: "main")
     """
     app = QApplication.instance() or QApplication(sys.argv)
-    dlg = HFDownloadDialog(repo_id, hf_filename, local_dir, revision)
+    dlg = HFDownloadDialog(label_txt, repo_id, hf_filename, local_dir, revision)
     dlg.exec()

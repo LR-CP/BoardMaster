@@ -636,12 +636,12 @@ Black: {self.hdrs.get('Black')}({self.hdrs.get('BlackElo')})
         
         global OPENINGS_DB, OPENINGS_LOADED_FLAG
         if len(OPENINGS_DB) == 0 or not OPENINGS_LOADED_FLAG:
-            dialog = LoadingDialog(title="Loading Openings dataset...", label_text="Please wait while the openings dataset is loaded.")
-            dialog.show()
+            # dialog = LoadingDialog(title="Loading Openings dataset...", label_text="Please wait while the openings dataset is loaded.")
+            # dialog.show()
             QApplication.processEvents()
             OPENINGS_DB = load_openings()
             QApplication.processEvents()
-            dialog.accept()
+            # dialog.accept()
             OPENINGS_LOADED_FLAG = True
 
         self.opening = self.get_opening_from_moves(temp_board)
@@ -876,12 +876,12 @@ Black (Accuracy: {self.black_accuracy}): Excellent: {black_excellent}✅, Good: 
         global OPENINGS_LOADED_FLAG
         if self.is_live_game == True and self.settings.value("game/load_openings", True, bool):
             if not OPENINGS_LOADED_FLAG:
-                dialog = LoadingDialog(title="Loading Openings Database...", label_text="Please wait while the openings database is loaded...")
-                dialog.show()
+                # dialog = LoadingDialog(title="Loading Openings Database...", label_text="Please wait while the openings database is loaded...")
+                # dialog.show()
                 QApplication.processEvents()
                 load_openings()
                 QApplication.processEvents()
-                dialog.accept()
+                # dialog.accept()
                 OPENINGS_LOADED_FLAG = True
             
             # Get opening for the current game state
