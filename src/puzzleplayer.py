@@ -256,15 +256,15 @@ class PuzzleManager:
 
         try:
             QApplication.processEvents()
-            # df = pl.scan_parquet("hf://datasets/Lichess/chess-puzzles/data/train-00000-of-00003.parquet")
+            # df = pl.scan_parquet("hf://datasets/Lichess/chess-puzzles/data/train-00000-of-00002.parquet")
             abs_pth = os.path.abspath(sys.argv[0])
             install_dir = os.path.dirname(abs_pth)
             data_dir = os.path.join(install_dir, "datasets")
             if not os.path.exists(data_dir):
                 os.makedirs(data_dir)
             if not os.path.exists(os.path.join(data_dir, "data", "train-00000-of-00001.parquet")):
-                start_hf_download(label_txt="Downloading Puzzle Dataset...", repo_id="Lichess/chess-puzzles", hf_filename="data/train-00000-of-00003.parquet", local_dir=data_dir)
-            df = pl.scan_parquet(os.path.join(data_dir, "data", "train-00000-of-00003.parquet"))
+                start_hf_download(label_txt="Downloading Puzzle Dataset...", repo_id="Lichess/chess-puzzles", hf_filename="data/train-00000-of-00002.parquet", local_dir=data_dir)
+            df = pl.scan_parquet(os.path.join(data_dir, "data", "train-00000-of-00002.parquet"))
             QApplication.processEvents()
             df = df.collect()
             self.dataframe = df
