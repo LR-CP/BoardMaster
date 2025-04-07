@@ -9,16 +9,13 @@ A free chess analysis tool
 
 import sys
 import os
-from PySide6.QtWidgets import QApplication, QSplashScreen
-from PySide6.QtGui import QScreen, QPixmap, Qt
+from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QScreen, QGuiApplication, Qt
 from main_window import BoardMaster
 
 if __name__ == "__main__":
-    # QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv)
-    # pixmap = QPixmap("../img/king.png")
-    # splash = QSplashScreen(pixmap, Qt.WindowStaysOnTopHint)
-    # splash.show()
     QApplication.processEvents()
     window = BoardMaster()
     srcSize = QScreen.availableGeometry(QApplication.primaryScreen())
